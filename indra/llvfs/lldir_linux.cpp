@@ -102,7 +102,7 @@ LLDir_Linux::LLDir_Linux()
 			LL_INFOS() << "Running in dev checkout with mSkinBaseDir "
 			 << mSkinBaseDir << LL_ENDL;
 		else
-			mSkinBaseDir = "";
+			mSkinBaseDir.clear();
     }
     if (mSkinBaseDir.empty())
     {
@@ -223,7 +223,7 @@ void LLDir_Linux::initAppDirs(const std::string &app_name,
 		}
 	}
 	
-	mCAFile = getExpandedFilename(LL_PATH_APP_SETTINGS, "CA.pem");
+	mCAFile = getExpandedFilename(LL_PATH_APP_SETTINGS, "ca-bundle.crt");
 }
 
 U32 LLDir_Linux::countFilesInDir(const std::string &dirname, const std::string &mask)
@@ -257,7 +257,7 @@ std::string LLDir_Linux::getCurPath()
 }
 
 
-BOOL LLDir_Linux::fileExists(const std::string &filename) const
+bool LLDir_Linux::fileExists(const std::string &filename) const
 {
 	struct stat stat_data;
 	// Check the age of the file

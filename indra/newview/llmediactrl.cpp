@@ -414,6 +414,23 @@ BOOL LLMediaCtrl::handleKeyHere( KEY key, MASK mask )
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+BOOL LLMediaCtrl::handleKeyUpHere(KEY key, MASK mask)
+{
+	BOOL result = FALSE;
+
+	if (mMediaSource)
+	{
+		result = mMediaSource->handleKeyUpHere(key, mask);
+	}
+
+	if (!result)
+		result = LLPanel::handleKeyUpHere(key, mask);
+
+	return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 void LLMediaCtrl::handleVisibilityChange ( BOOL new_visibility )
 {
 	LL_INFOS() << "visibility changed to " << (new_visibility?"true":"false") << LL_ENDL;
@@ -578,15 +595,9 @@ void LLMediaCtrl::navigateTo( std::string url_in, std::string mime_type)
 //
 void LLMediaCtrl::navigateToLocalPage( const std::string& subdir, const std::string& filename_in )
 {
-	std::string language = LLUI::getLanguage();
 	std::string filename(gDirUtilp->add(subdir, filename_in));
+	std::string expanded_filename = gDirUtilp->findSkinnedFilename("html", filename);
 
-	std::string expanded_filename = gDirUtilp->findSkinnedFilename("html", language, filename);
-
-	if (expanded_filename.empty() && language != "en-us")
-	{
-		expanded_filename = gDirUtilp->findSkinnedFilename("html", "en-us", filename);
-	}
 	if(expanded_filename.empty())
 	{
 		LL_WARNS() << "File " << filename << "not found" << LL_ENDL;
@@ -745,7 +756,7 @@ void LLMediaCtrl::draw()
 
 	// alpha off for this
 	LLGLSUIDefault gls_ui;
-	LLGLDisable gls_alphaTest( GL_ALPHA_TEST );
+	LLGLDisable<GL_ALPHA_TEST> gls_alpha_test;
 
 	bool draw_media = false;
 	
@@ -831,7 +842,7 @@ void LLMediaCtrl::draw()
 
 			// draw the browser
 			gGL.setSceneBlendType(LLRender::BT_REPLACE);
-			gGL.begin( LLRender::QUADS );
+			gGL.begin( LLRender::TRIANGLE_STRIP );
 			if (! media_plugin->getTextureCoordsOpenGL())
 			{
 				// render using web browser reported width and height, instead of trying to invert GL scale
@@ -841,11 +852,11 @@ void LLMediaCtrl::draw()
 				gGL.texCoord2f( 0.f, 0.f );
 				gGL.vertex2i( x_offset, y_offset + height );
 
+				gGL.texCoord2f(max_u, max_v);
+				gGL.vertex2i(x_offset + width, y_offset);
+
 				gGL.texCoord2f( 0.f, max_v );
 				gGL.vertex2i( x_offset, y_offset );
-
-				gGL.texCoord2f( max_u, max_v );
-				gGL.vertex2i( x_offset + width, y_offset );
 			}
 			else
 			{
@@ -856,11 +867,11 @@ void LLMediaCtrl::draw()
 				gGL.texCoord2f( 0.f, max_v );
 				gGL.vertex2i( x_offset, y_offset + height );
 
+				gGL.texCoord2f(max_u, 0.f);
+				gGL.vertex2i(x_offset + width, y_offset);
+
 				gGL.texCoord2f( 0.f, 0.f );
 				gGL.vertex2i( x_offset, y_offset );
-
-				gGL.texCoord2f( max_u, 0.f );
-				gGL.vertex2i( x_offset + width, y_offset );
 			}
 			gGL.end();
 			gGL.setSceneBlendType(LLRender::BT_ALPHA);
@@ -940,7 +951,7 @@ void LLMediaCtrl::handleMediaEvent(LLPluginClassMedia* self, EMediaEvent event)
 			LL_DEBUGS("Media") <<  "Media event:  MEDIA_EVENT_CURSOR_CHANGED, new cursor is " << self->getCursorName() << LL_ENDL;
 		}
 		break;
-		
+			
 		case MEDIA_EVENT_NAVIGATE_BEGIN:
 		{
 			LL_DEBUGS("Media") <<  "Media event:  MEDIA_EVENT_NAVIGATE_BEGIN, url is " << self->getNavigateURI() << LL_ENDL;
@@ -995,21 +1006,23 @@ void LLMediaCtrl::handleMediaEvent(LLPluginClassMedia* self, EMediaEvent event)
 			std::string target = self->getClickTarget();
 			std::string uuid = self->getClickUUID();
 
-			LLNotification::Params notify_params("PopupAttempt");
-			notify_params.payload = LLSD().with("target", target).with("url", url).with("uuid", uuid).with("media_id", mMediaTextureID);
-			notify_params.functor(boost::bind(&LLMediaCtrl::onPopup, this, _1, _2));
+			LLWeb::loadURL(url, target, std::string());
 
-			if (mTrusted)
-			{
-				LLNotifications::instance().forceResponse(notify_params, 0);
-			}
-			else
-			{
-				LLNotifications::instance().add(notify_params);
-			}
+			//LLNotification::Params notify_params("PopupAttempt");
+			//notify_params.payload = LLSD().with("target", target).with("url", url).with("uuid", uuid).with("media_id", mMediaTextureID);
+			//notify_params.functor(boost::bind(&LLMediaCtrl::onPopup, this, _1, _2));
+
+			//if (mTrusted)
+			//{
+			//	LLNotifications::instance().forceResponse(notify_params, 0);
+			//}
+			//else
+			//{
+			//	LLNotifications::instance().add(notify_params);
+			//}
 			break;
 		};
-		
+
 		case MEDIA_EVENT_CLICK_LINK_NOFOLLOW:
 		{
 			LL_DEBUGS("Media") <<  "Media event:  MEDIA_EVENT_CLICK_LINK_NOFOLLOW, uri is " << self->getClickURL() << LL_ENDL;
@@ -1073,6 +1086,13 @@ void LLMediaCtrl::handleMediaEvent(LLPluginClassMedia* self, EMediaEvent event)
 		{
 			LL_DEBUGS("Media") <<  "Media event:  MEDIA_EVENT_LINK_HOVERED, hover text is: " << self->getHoverText() << LL_ENDL;
 			mHoverTextChanged = true;
+		};
+		break;
+
+		case MEDIA_EVENT_FILE_DOWNLOAD:
+		{
+			//llinfos << "Media event - file download requested - filename is " << self->getFileDownloadFilename() << llendl;
+			//LLNotificationsUtil::add("MediaFileDownloadUnsupported");
 		};
 		break;
 
@@ -1140,6 +1160,16 @@ void LLMediaCtrl::setTrustedContent(bool trusted)
 	{
 		mMediaSource->setTrustedBrowser(trusted);
 	}
+}
+
+bool LLMediaCtrl::wantsKeyUpKeyDown() const
+{
+    return true;
+}
+
+bool LLMediaCtrl::wantsReturnKey() const
+{
+    return true;
 }
 
 // virtual

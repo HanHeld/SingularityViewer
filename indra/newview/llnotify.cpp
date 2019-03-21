@@ -54,6 +54,7 @@
 #include "llfloaterchat.h"	// for add_chat_history()
 #include "lloverlaybar.h" // for gOverlayBar
 #include "lluictrlfactory.h"
+#include "llcheckboxctrl.h"
 
 #include "hippogridmanager.h"
 
@@ -183,34 +184,19 @@ LLNotifyBox::LLNotifyBox(LLNotificationPtr notification)
 	bool layout_script_dialog(notification->getName() == "ScriptDialog" || notification->getName() == "ScriptDialogGroup");
 	LLRect rect = mIsTip ? getNotifyTipRect(message)
 		   		  		 : getNotifyRect(is_textbox ? 10 : mNumOptions, layout_script_dialog, mIsCaution);
+	if ((form->getIgnoreType() == LLNotificationForm::IGNORE_WITH_DEFAULT_RESPONSE || form->getIgnoreType() == LLNotificationForm::IGNORE_WITH_LAST_RESPONSE))
+		rect.mBottom -= BTN_HEIGHT;
 	setRect(rect);
 	setFollows(mIsTip ? (FOLLOWS_BOTTOM|FOLLOWS_RIGHT) : (FOLLOWS_TOP|FOLLOWS_RIGHT));
 	setBackgroundVisible(FALSE);
 	setBackgroundOpaque(TRUE);
-
-	LLIconCtrl* icon;
-	LLTextEditor* text;
 
 	const S32 TOP = getRect().getHeight() - (mIsTip ? (S32)sFont->getLineHeight() : 32);
 	const S32 BOTTOM = (S32)sFont->getLineHeight();
 	S32 x = HPAD + HPAD;
 	S32 y = TOP;
 
-	if (mIsTip)
-	{
-		// use the tip notification icon
-		icon = new LLIconCtrl(std::string("icon"), LLRect(x, y, x+32, TOP-32), std::string("notify_tip_icon.tga"));
-	}
-	else if (mIsCaution)
-	{
-		// use the caution notification icon
-		icon = new LLIconCtrl(std::string("icon"), LLRect(x, y, x+32, TOP-32), std::string("notify_caution_icon.tga"));
-	}
-	else
-	{
-		// use the default notification icon
-		icon = new LLIconCtrl(std::string("icon"), LLRect(x, y, x+32, TOP-32), std::string("notify_box_icon.tga"));
-	}
+	auto icon = new LLIconCtrl(std::string("icon"), LLRect(x, y, x+32, TOP-32), mIsTip ? "notify_tip_icon.tga" : mIsCaution ? "notify_caution_icon.tga" : "notify_box_icon.tga");
 
 	icon->setMouseOpaque(FALSE);
 	addChild(icon);
@@ -218,11 +204,10 @@ LLNotifyBox::LLNotifyBox(LLNotificationPtr notification)
 	x += HPAD + HPAD + 32;
 
 	// add a caution textbox at the top of a caution notification
-	LLTextBox* caution_box = NULL;
 	if (mIsCaution && !mIsTip)
 	{
 		S32 caution_height = ((S32)sFont->getLineHeight() * 2) + VPAD;
-		caution_box = new LLTextBox(
+		auto caution_box = new LLTextBox(
 			std::string("caution_box"), 
 			LLRect(x, y, getRect().getWidth() - 2, caution_height), 
 			LLStringUtil::null, 
@@ -241,58 +226,30 @@ LLNotifyBox::LLNotifyBox(LLNotificationPtr notification)
 		// it appears below the caution textbox
 		y = y - caution_height;
 	}
-	else if (mIsCaution && mIsTip)	
+	else
 	{
-
 		const S32 BTN_TOP = BOTTOM_PAD + (((mNumOptions-1+2)/3)) * (BTN_HEIGHT+VPAD);
 
 		// Tokenization on \n is handled by LLTextBox
 
 		const S32 MAX_LENGTH = 512 + 20 + DB_FIRST_NAME_BUF_SIZE + DB_LAST_NAME_BUF_SIZE + DB_INV_ITEM_NAME_BUF_SIZE;  // For script dialogs: add space for title.
 
-		text = new LLTextEditor(std::string("box"), LLRect(x, y, getRect().getWidth()-2, mIsTip ? BOTTOM : BTN_TOP+16), MAX_LENGTH, message, sFont, FALSE);
+		auto text = new LLTextEditor(std::string("box"), LLRect(x, y, getRect().getWidth()-2, mIsTip ? BOTTOM : BTN_TOP+16), MAX_LENGTH, LLStringUtil::null, sFont, FALSE, true);
 		text->setWordWrap(TRUE);
-		text->setTabStop(FALSE);
-		text->setMouseOpaque(FALSE);
+		text->setMouseOpaque(TRUE);
 		text->setBorderVisible(FALSE);
-		text->setTakesNonScrollClicks(FALSE);
+		text->setTakesNonScrollClicks(TRUE);
 		text->setHideScrollbarForShortDocs(TRUE);
 		text->setReadOnlyBgColor ( LLColor4::transparent ); // the background color of the box is manually 
 															// rendered under the text box, therefore we want 
 															// the actual text box to be transparent
-		text->setReadOnlyFgColor ( gColors.getColor("NotifyCautionWarnColor") ); //sets caution text color for tip notifications
-		text->setEnabled(FALSE); // makes it read-only
-		text->setTabStop(FALSE); // can't tab to it (may be a problem for scrolling via keyboard)
-		addChild(text);
-	}
-	else
-	{
-		const S32 BTN_TOP = BOTTOM_PAD + (((mNumOptions-1+2)/3)) * (BTN_HEIGHT+VPAD);
 
-		// Tokenization on \n is handled by LLTextBox
-		const S32 MAX_LENGTH = 512 + 20 + 
-			DB_FIRST_NAME_BUF_SIZE + 
-			DB_LAST_NAME_BUF_SIZE +
-			DB_INV_ITEM_NAME_BUF_SIZE;  // For script dialogs: add space for title.
-
-		text = new LLTextEditor(std::string("box"),
-								LLRect(x, y, getRect().getWidth()-2, mIsTip ? BOTTOM : BTN_TOP+16),
-								MAX_LENGTH,
-								message,
-								sFont,
-								FALSE);
-		text->setWordWrap(TRUE);
-		text->setTabStop(FALSE);
-		text->setMouseOpaque(FALSE);
-		text->setBorderVisible(FALSE);
-		text->setTakesNonScrollClicks(FALSE);
-		text->setHideScrollbarForShortDocs(TRUE);
-		text->setReadOnlyBgColor ( LLColor4::transparent ); // the background color of the box is manually 
-															// rendered under the text box, therefore we want 
-															// the actual text box to be transparent
-		text->setReadOnlyFgColor ( gColors.getColor("NotifyTextColor") );
-		text->setEnabled(FALSE); // makes it read-only
+		auto text_color = gColors.getColor(mIsCaution && mIsTip ? "NotifyCautionWarnColor" : "NotifyTextColor");
+		text->setReadOnlyFgColor(text_color); //sets caution text color for tip notifications
+		if (!mIsCaution) // We could do some extra color math here to determine if bg's too close to link color, but let's just cross with the link color instead
+			text->setLinkColor(new LLColor4(lerp(text_color, gSavedSettings.getColor4("HTMLLinkColor"), 0.4f)));
 		text->setTabStop(FALSE); // can't tab to it (may be a problem for scrolling via keyboard)
+		text->appendText(message,false,false,nullptr,!layout_script_dialog); // Now we can set the text, since colors have been set.
 		addChild(text);
 	}
 
@@ -359,6 +316,45 @@ LLNotifyBox::LLNotifyBox(LLNotificationPtr notification)
 			addButton("OK", "OK", false, true, layout_script_dialog);
 			mAddedDefaultBtn = true;
 		}
+
+		std::string check_title;
+		if (form->getIgnoreType() == LLNotificationForm::IGNORE_WITH_DEFAULT_RESPONSE)
+		{
+			check_title = LLNotificationTemplates::instance().getGlobalString("skipnexttime");
+		}
+		else if (form->getIgnoreType() == LLNotificationForm::IGNORE_WITH_LAST_RESPONSE)
+		{
+			check_title = LLNotificationTemplates::instance().getGlobalString("alwayschoose");
+		}
+		if (!check_title.empty())
+		{
+			const LLFontGL* font = LLResMgr::getInstance()->getRes(LLFONT_SANSSERIF);
+			S32 line_height = llfloor(font->getLineHeight() + 0.99f);
+
+			// Extend dialog for "check next time"
+			S32 max_msg_width = getRect().getWidth() - HPAD * 9;
+			S32 check_width = S32(font->getWidth(check_title) + 0.99f) + 16;
+			max_msg_width = llmax(max_msg_width, check_width);
+
+			S32 msg_x = (getRect().getWidth() - max_msg_width) / 2;
+
+			LLRect check_rect;
+			check_rect.setOriginAndSize(msg_x, BOTTOM_PAD + BTN_HEIGHT + VPAD*2 + (BTN_HEIGHT + VPAD) * (mNumButtons / 3),
+				max_msg_width, line_height);
+
+			LLCheckboxCtrl* check = new LLCheckboxCtrl(std::string("check"), check_rect, check_title, font,
+				// Lambda abuse.
+				[this](LLUICtrl* ctrl, const LLSD& param)
+				{
+						this->mNotification->setIgnored(ctrl->getValue());
+				});
+			check->setEnabledColor(LLUI::sColorsGroup->getColor(mIsCaution ? "AlertCautionTextColor" : "AlertTextColor"));
+			if (mIsCaution)
+			{
+				check->setButtonColor(LLUI::sColorsGroup->getColor("ButtonCautionImageColor"));
+			}
+			addChild(check);
+		}
 		
 		if (++sNotifyBoxCount <= 0)
 			LL_WARNS() << "A notification was mishandled. sNotifyBoxCount = " << sNotifyBoxCount << LL_ENDL;
@@ -390,9 +386,9 @@ LLButton* LLNotifyBox::addButton(const std::string& name, const std::string& lab
 
 	if (layout_script_dialog)
 	{
-		// Add two "blank" option spaces, before the "Ignore" button
-		index = button_index + 2;
-		if (button_index == 0)
+		// Add one "blank" option space, before the "Block" and "Ignore" buttons
+		index = button_index + 1;
+		if (button_index == 0 || button_index == 1)
 		{
 			// Ignore button is smaller, less wide
 			btn_height = BTN_HEIGHT_SMALL;
@@ -444,13 +440,9 @@ BOOL LLNotifyBox::handleMouseUp(S32 x, S32 y, MASK mask)
 // virtual
 BOOL LLNotifyBox::handleRightMouseDown(S32 x, S32 y, MASK mask)
 {
-	if (!mIsTip)
-	{
-		moveToBack(true);
-		return TRUE;
-	}
-
-	return LLPanel::handleRightMouseDown(x, y, mask);
+	bool done = LLPanel::handleRightMouseDown(x, y, mask);
+	if (!done && !mIsTip) moveToBack(true);
+	return done || !mIsTip;
 }
 
 
@@ -497,7 +489,7 @@ void LLNotifyBox::draw()
 
 void LLNotifyBox::drawBackground() const
 {
-	if (LLUIImagePtr imagep = LLUI::getUIImage("rounded_square.tga"))
+	if (LLUIImagePtr imagep = LLUI::getUIImage("Rounded_Square"))
 	{
 		gGL.getTexUnit(0)->bind(imagep->getImage());
 		// set proper background color depending on whether notify box is a caution or not
@@ -625,9 +617,9 @@ LLRect LLNotifyBox::getNotifyRect(S32 num_options, bool layout_script_dialog, bo
 	if (num_options < 1)
 		num_options = 1;
 
-	// Add two "blank" option spaces.
+	// Add one "blank" option space.
 	if (layout_script_dialog)
-		num_options += 2;
+		num_options += 1;
 
 	S32 additional_lines = (num_options-1) / 3;
 

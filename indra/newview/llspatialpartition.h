@@ -127,9 +127,7 @@ public:
 	U32 mBlendFuncDst;
 	BOOL mHasGlow;
 	LLPointer<LLViewerTexture> mSpecularMap;
-	const LLMatrix4* mSpecularMapMatrix;
 	LLPointer<LLViewerTexture> mNormalMap;
-	const LLMatrix4* mNormalMapMatrix;
 	LLVector4 mSpecColor; // XYZ = Specular RGB, W = Specular Exponent
 	F32  mEnvIntensity;
 	F32  mAlphaMaskCutoff;
@@ -243,8 +241,8 @@ public:
 	typedef std::vector<LLPointer<LLDrawInfo> > drawmap_elem_t; 
 	typedef std::map<U32, drawmap_elem_t > draw_map_t;	
 	typedef std::vector<LLPointer<LLVertexBuffer> > buffer_list_t;
-	typedef std::map<LLFace*, buffer_list_t> buffer_texture_map_t;
-	typedef std::map<U32, buffer_texture_map_t> buffer_map_t;
+	typedef std::vector<std::pair<LLFace*, buffer_list_t> > buffer_texture_vec_t;
+	typedef std::vector<std::pair<U32, buffer_texture_vec_t> > buffer_vec_t;
 
 
 
@@ -339,7 +337,7 @@ protected:
 
 public:
 	bridge_list_t mBridgeList;
-	buffer_map_t mBufferMap; //used by volume buffers to store unique buffers per texture
+	buffer_vec_t mBufferVec; //used by volume buffers to store unique buffers per texture
 
 	U32 mGeometryBytes; //used by volumes to track how many bytes of geometry data are in this node
 	F32 mSurfaceArea; //used by volumes to track estimated surface area of geometry in this node
@@ -386,7 +384,7 @@ class LLSpatialPartition: public LLViewerOctreePartition, public LLGeometryManag
 {
 public:
 	//static BOOL sFreezeState; //if true, no spatialgroup state updates will be made
-	LLSpatialPartition(U32 data_mask,  BOOL render_by_group, U32 mBufferUsage);
+	LLSpatialPartition(U32 data_mask,  BOOL render_by_group, U32 mBufferUsage, LLViewerRegion* regionp);
 	virtual ~LLSpatialPartition();
 
 	LLSpatialGroup *put(LLDrawable *drawablep, BOOL was_visible = FALSE);
@@ -451,7 +449,7 @@ protected:
 public:
 	typedef std::vector<LLPointer<LLSpatialBridge> > bridge_vector_t;
 	
-	LLSpatialBridge(LLDrawable* root, BOOL render_by_group, U32 data_mask);
+	LLSpatialBridge(LLDrawable* root, BOOL render_by_group, U32 data_mask, LLViewerRegion* regionp);
 	
 	void destroyTree();
 
@@ -540,7 +538,7 @@ private:
 class LLWaterPartition : public LLSpatialPartition
 {
 public:
-	LLWaterPartition();
+	LLWaterPartition(LLViewerRegion* regionp);
 	virtual void getGeometry(LLSpatialGroup* group) {  }
 	virtual void addGeometryCount(LLSpatialGroup* group, U32 &vertex_count, U32& index_count) { }
 };
@@ -549,14 +547,14 @@ public:
 class LLVoidWaterPartition : public LLWaterPartition
 {
 public:
-	LLVoidWaterPartition();
+	LLVoidWaterPartition(LLViewerRegion* regionp);
 };
 
 //spatial partition for terrain (impelmented in LLVOSurfacePatch.cpp)
 class LLTerrainPartition : public LLSpatialPartition
 {
 public:
-	LLTerrainPartition();
+	LLTerrainPartition(LLViewerRegion* regionp);
 	virtual void getGeometry(LLSpatialGroup* group);
 	virtual LLVertexBuffer* createVertexBuffer(U32 type_mask, U32 usage);
 };
@@ -565,7 +563,7 @@ public:
 class LLTreePartition : public LLSpatialPartition
 {
 public:
-	LLTreePartition();
+	LLTreePartition(LLViewerRegion* regionp);
 	virtual void getGeometry(LLSpatialGroup* group) { }
 	virtual void addGeometryCount(LLSpatialGroup* group, U32 &vertex_count, U32& index_count) { }
 
@@ -575,7 +573,7 @@ public:
 class LLParticlePartition : public LLSpatialPartition
 {
 public:
-	LLParticlePartition();
+	LLParticlePartition(LLViewerRegion* regionp);
 	virtual void rebuildGeom(LLSpatialGroup* group);
 	virtual void getGeometry(LLSpatialGroup* group);
 	virtual void addGeometryCount(LLSpatialGroup* group, U32 &vertex_count, U32& index_count);
@@ -587,14 +585,14 @@ protected:
 class LLHUDParticlePartition : public LLParticlePartition
 {
 public:
-	LLHUDParticlePartition();
+	LLHUDParticlePartition(LLViewerRegion* regionp);
 };
 
 //spatial partition for grass (implemented in LLVOGrass.cpp)
 class LLGrassPartition : public LLSpatialPartition
 {
 public:
-	LLGrassPartition();
+	LLGrassPartition(LLViewerRegion* regionp);
 	virtual void getGeometry(LLSpatialGroup* group);
 	virtual void addGeometryCount(LLSpatialGroup* group, U32 &vertex_count, U32& index_count);
 protected:
@@ -606,7 +604,7 @@ protected:
 class LLCloudPartition : public LLParticlePartition
 {
 public:
-	LLCloudPartition();
+	LLCloudPartition(LLViewerRegion* regionp);
 };
 #endif
 
@@ -621,18 +619,32 @@ class LLVolumeGeometryManager: public LLGeometryManager
 		DISTANCE_SORT
 	} eSortType;
 
+	LLVolumeGeometryManager();
+	virtual ~LLVolumeGeometryManager();
 	virtual void rebuildGeom(LLSpatialGroup* group);
 	virtual void rebuildMesh(LLSpatialGroup* group);
 	virtual void getGeometry(LLSpatialGroup* group);
 	void genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace** faces, U32 face_count, BOOL distance_sort = FALSE, BOOL batch_textures = FALSE);
 	void registerFace(LLSpatialGroup* group, LLFace* facep, U32 type);
+private:
+	void allocateFaces(U32 pMaxFaceCount);
+	void freeFaces();
+
+	static int32_t sInstanceCount;
+	static LLFace** sFullbrightFaces;
+	static LLFace** sBumpFaces;
+	static LLFace** sSimpleFaces;
+	static LLFace** sNormFaces;
+	static LLFace** sSpecFaces;
+	static LLFace** sNormSpecFaces;
+	static LLFace** sAlphaFaces;
 };
 
 //spatial partition that uses volume geometry manager (implemented in LLVOVolume.cpp)
 class LLVolumePartition : public LLSpatialPartition, public LLVolumeGeometryManager
 {
 public:
-	LLVolumePartition();
+	LLVolumePartition(LLViewerRegion* regionp);
 	virtual void rebuildGeom(LLSpatialGroup* group) { LLVolumeGeometryManager::rebuildGeom(group); }
 	virtual void getGeometry(LLSpatialGroup* group) { LLVolumeGeometryManager::getGeometry(group); }
 	virtual void rebuildMesh(LLSpatialGroup* group) { LLVolumeGeometryManager::rebuildMesh(group); }
@@ -643,7 +655,7 @@ public:
 class LLVolumeBridge : public LLSpatialBridge, public LLVolumeGeometryManager
 {
 public:
-	LLVolumeBridge(LLDrawable* drawable);
+	LLVolumeBridge(LLDrawable* drawable, LLViewerRegion* regionp);
 	virtual void rebuildGeom(LLSpatialGroup* group) { LLVolumeGeometryManager::rebuildGeom(group); }
 	virtual void getGeometry(LLSpatialGroup* group) { LLVolumeGeometryManager::getGeometry(group); }
 	virtual void rebuildMesh(LLSpatialGroup* group) { LLVolumeGeometryManager::rebuildMesh(group); }
@@ -653,13 +665,13 @@ public:
 class LLAttachmentBridge : public LLVolumeBridge
 {
 public:
-	LLAttachmentBridge(LLDrawable* drawable);
+	LLAttachmentBridge(LLDrawable* drawable, LLViewerRegion* regionp);
 };
 
 class LLHUDBridge : public LLVolumeBridge
 {
 public:
-	LLHUDBridge(LLDrawable* drawablep);
+	LLHUDBridge(LLDrawable* drawablep, LLViewerRegion* regionp);
 	virtual void shiftPos(const LLVector4a& vec);
 	virtual F32 calcPixelArea(LLSpatialGroup* group, LLCamera& camera);
 };
@@ -668,7 +680,7 @@ public:
 class LLBridgePartition : public LLSpatialPartition
 {
 public:
-	LLBridgePartition();
+	LLBridgePartition(LLViewerRegion* regionp);
 	virtual void getGeometry(LLSpatialGroup* group) { }
 	virtual void addGeometryCount(LLSpatialGroup* group, U32 &vertex_count, U32& index_count) {  }
 };
@@ -677,13 +689,13 @@ public:
 class LLAttachmentPartition : public LLBridgePartition
 {
 public:
-	LLAttachmentPartition();
+	LLAttachmentPartition(LLViewerRegion* regionp);
 };
 
 class LLHUDPartition : public LLBridgePartition
 {
 public:
-	LLHUDPartition();
+	LLHUDPartition(LLViewerRegion* regionp);
 	virtual void shift(const LLVector4a &offset) { }	//HUD objects don't shift with region crossing.  That would be silly.
 };
 

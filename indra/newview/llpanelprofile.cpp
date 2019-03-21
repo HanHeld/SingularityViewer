@@ -97,14 +97,8 @@ public:
 		}
 
 		std::string verb = params[1].asString();
-#if LL_WINDOWS // C++11
-		while (!verb.empty() && std::ispunct(verb.back()))
-			verb.pop_back();
-#else
-		for (size_t i = verb.size()-1; i >= 0 && std::ispunct(verb[i]); --i)
-			verb.erase(i);
-#endif
-		if (verb == "about")
+		for (; !verb.empty() && std::ispunct(verb.back()); verb.pop_back());
+		if (verb == "about" || verb == "completename" || verb == "displayname" || verb == "username")
 		{
 			LLAvatarActions::showProfile(avatar_id);
 			return true;

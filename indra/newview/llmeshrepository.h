@@ -92,54 +92,6 @@ public:
 	}
 };
 
-class LLImportMaterial
-{
-public:
-	LLPointer<LLViewerFetchedTexture> mDiffuseMap;
-	std::string mDiffuseMapFilename;
-	std::string mDiffuseMapLabel;
-	std::string mBinding;
-	LLColor4 mDiffuseColor;
-	bool mFullbright;
-
-	bool operator<(const LLImportMaterial &params) const;
-
-	LLImportMaterial() 
-		: mFullbright(false) 
-	{ 
-		mDiffuseColor.set(1, 1, 1, 1);
-	}
-
-	LLImportMaterial(LLSD& data);
-
-	LLSD asLLSD();
-};
-
-class LLModelInstance 
-{
-public:
-	LLPointer<LLModel> mModel;
-	LLPointer<LLModel> mLOD[5];
-	
-	std::string mLabel;
-
-	LLUUID mMeshID;
-	S32 mLocalMeshID;
-
-	LLMatrix4 mTransform;
-	std::map<std::string, LLImportMaterial> mMaterial;
-
-	LLModelInstance(LLModel* model, const std::string& label, LLMatrix4& transform, std::map<std::string, LLImportMaterial>& materials)
-		: mModel(model), mLabel(label), mTransform(transform), mMaterial(materials)
-	{
-		mLocalMeshID = -1;
-	}
-
-	LLModelInstance(LLSD& data);
-
-	LLSD asLLSD();
-};
-
 class LLPhysicsDecomp : public LLThread
 {
 public:
@@ -235,33 +187,42 @@ public:
 	
 	std::map<LLUUID, U32> mMeshHeaderSize;
 
-	class HeaderRequest
+	struct MeshRequest
+	{
+		LLTimer mTimer;
+		LLVolumeParams mMeshParams;
+		MeshRequest(const LLVolumeParams&  mesh_params) : mMeshParams(mesh_params)
+		{
+			mTimer.start();
+		}
+		virtual ~MeshRequest() {}
+		virtual void preFetch() {}
+		virtual bool fetch(U32& count) = 0;
+	};
+	class HeaderRequest : public MeshRequest
 	{ 
 	public:
-		const LLVolumeParams mMeshParams;
-
 		HeaderRequest(const LLVolumeParams&  mesh_params)
-			: mMeshParams(mesh_params)
-		{
-		}
-
+			: MeshRequest(mesh_params)
+		{}
+		bool fetch(U32& count);
 		bool operator<(const HeaderRequest& rhs) const
 		{
 			return mMeshParams < rhs.mMeshParams;
 		}
 	};
 
-	class LODRequest
+	class LODRequest : public MeshRequest
 	{
 	public:
-		LLVolumeParams  mMeshParams;
 		S32 mLOD;
 		F32 mScore;
 
 		LODRequest(const LLVolumeParams&  mesh_params, S32 lod)
-			: mMeshParams(mesh_params), mLOD(lod), mScore(0.f)
-		{
-		}
+			: MeshRequest(mesh_params), mLOD(lod), mScore(0.f)
+		{}
+		void preFetch();
+		bool fetch(U32& count);
 	};
 
 	struct CompareScoreGreater
@@ -313,10 +274,10 @@ public:
 	std::queue<LLModel::Decomposition*> mDecompositionQ;
 
 	//queue of requested headers
-	std::queue<HeaderRequest> mHeaderReqQ;
+	std::deque<std::pair<std::shared_ptr<MeshRequest>, F32> > mHeaderReqQ;
 
 	//queue of requested LODs
-	std::queue<LODRequest> mLODReqQ;
+	std::deque<std::pair<std::shared_ptr<MeshRequest>, F32> > mLODReqQ;
 
 	//queue of unavailable LODs (either asset doesn't exist or asset doesn't have desired LOD)
 	std::queue<LODRequest> mUnavailableQ;
@@ -333,6 +294,20 @@ public:
 	LLMeshRepoThread();
 	~LLMeshRepoThread();
 
+	void runQueue(std::deque<std::pair<std::shared_ptr<MeshRequest>, F32> >& queue, U32& count, S32& active_requests);
+	void runSet(std::set<LLUUID>& set, std::function<bool (const LLUUID& mesh_id)> fn);
+	void pushHeaderRequest(const LLVolumeParams& mesh_params, F32 delay = 0)
+	{
+		std::shared_ptr<LLMeshRepoThread::MeshRequest> req;
+		req.reset(new LLMeshRepoThread::HeaderRequest(mesh_params));
+		mHeaderReqQ.push_back(std::make_pair(req, delay));
+	}
+	void pushLODRequest(const LLVolumeParams& mesh_params, S32 lod, F32 delay = 0)
+	{
+		std::shared_ptr<LLMeshRepoThread::MeshRequest> req;
+		req.reset(new LLMeshRepoThread::LODRequest(mesh_params, lod));
+		mLODReqQ.push_back(std::make_pair(req, delay));
+	}
 	virtual void run();
 
 	void lockAndLoadMeshLOD(const LLVolumeParams& mesh_params, S32 lod);
@@ -441,6 +416,7 @@ public:
 	void setFeeObserverHandle(LLHandle<LLWholeModelFeeObserver> observer_handle) { mFeeObserverHandle = observer_handle; }
 	void setUploadObserverHandle(LLHandle<LLWholeModelUploadObserver> observer_handle) { mUploadObserverHandle = observer_handle; }
 
+	LLViewerFetchedTexture* FindViewerTexture(const LLImportMaterial& material);
 private:
 	LLHandle<LLWholeModelFeeObserver> mFeeObserverHandle;
 	LLHandle<LLWholeModelUploadObserver> mUploadObserverHandle;
@@ -497,6 +473,7 @@ public:
 	void init();
 	void shutdown();
 
+	void unregisterMesh(LLVOVolume* volume);
 	//mesh management functions
 	S32 loadMesh(LLVOVolume* volume, const LLVolumeParams& mesh_params, S32 detail = 0, S32 last_lod = -1);
 	
@@ -528,7 +505,7 @@ public:
 
 	S32 getMeshSize(const LLUUID& mesh_id, S32 lod);
 
-	typedef std::map<LLVolumeParams, std::set<LLUUID> > mesh_load_map;
+	typedef std::map<LLVolumeParams, std::vector<LLVOVolume*> > mesh_load_map;
 	mesh_load_map mLoadingMeshes[4];
 
 	typedef boost::unordered_map<LLUUID, LLMeshSkinInfo> skin_map;
@@ -588,7 +565,6 @@ public:
 	void updateInventory(inventory_data data);
 
 	std::string mGetMeshCapability;
-
 };
 
 extern LLMeshRepository gMeshRepo;

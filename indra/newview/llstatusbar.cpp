@@ -45,6 +45,7 @@
 #include "llfloaterregioninfo.h"
 #include "llfloaterscriptdebug.h"
 #include "llfloatersearch.h"
+#include "llfloaterstats.h"
 #include "llhudicon.h"
 #include "llkeyboard.h"
 #include "lllineeditor.h"
@@ -55,6 +56,7 @@
 #include "llpathfindingnavmeshstatus.h"
 #include "llimview.h"
 #include "lltextbox.h"
+#include "lltrans.h"
 #include "llui.h"
 #include "llviewerparceloverlay.h"
 #include "llviewerregion.h"
@@ -234,7 +236,7 @@ mIsNavMeshDirty(false)
 	mSearchBevel->setVisible(show_search);
 
 	mTextParcelName->setClickedCallback(boost::bind(onClickParcelInfo));
-	mTextBalance->setClickedCallback(boost::bind(LLFloaterBuyCurrency::buyCurrency));
+	mTextBalance->setClickedCallback(boost::bind(LLStatusBar::sendMoneyBalanceRequest, true));
 
 	// TODO: Disable buying currency when connected to non-SL grids
 	// that don't support currency yet -- MC
@@ -275,6 +277,7 @@ mIsNavMeshDirty(false)
 	addChild(mSGPacketLoss);
 
 	mStatBtn = getChild<LLTextBox>("stat_btn");
+	mStatBtn->setClickedCallback(boost::bind(LLFloaterStats::toggleInstance, LLSD()));
 }
 
 LLStatusBar::~LLStatusBar()
@@ -670,8 +673,10 @@ void LLStatusBar::setUPC(S32 upc)
 }
 
 // static
-void LLStatusBar::sendMoneyBalanceRequest()
+void LLStatusBar::sendMoneyBalanceRequest(bool from_user)
 {
+	void cmdline_printchat(const std::string& message);
+	if (from_user) cmdline_printchat(LLTrans::getString("refreshing balance"));
 	LLMessageSystem* msg = gMessageSystem;
 	msg->newMessageFast(_PREHASH_MoneyBalanceRequest);
 	msg->nextBlockFast(_PREHASH_AgentData);
@@ -893,7 +898,7 @@ public:
 		if (tokens.size() == 1
 			&& tokens[0].asString() == "request")
 		{
-			LLStatusBar::sendMoneyBalanceRequest();
+			LLStatusBar::sendMoneyBalanceRequest(true);
 			return true;
 		}
 		return false;

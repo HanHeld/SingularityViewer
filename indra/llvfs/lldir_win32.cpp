@@ -48,60 +48,28 @@ LLDir_Win32::LLDir_Win32()
 
 	WCHAR w_str[MAX_PATH];
 
-	HRESULT (WINAPI* pSHGetKnownFolderPath)(REFKNOWNFOLDERID rfid, DWORD dwFlags, HANDLE hToken, PWSTR *ppszPath) = NULL;
-	HMODULE shell = LoadLibrary(L"shell32");
-	if(shell)	//SHGetSpecialFolderPath is deprecated from Vista an onwards. Try to use SHGetKnownFolderPath if it's available
-	{
-		pSHGetKnownFolderPath = (HRESULT (WINAPI *)(REFKNOWNFOLDERID, DWORD, HANDLE, PWSTR *))GetProcAddress(shell, "SHGetKnownFolderPath");
-	}
+	WCHAR* pPath = NULL;
+	if(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &pPath) == S_OK)
+		wcscpy_s(w_str, pPath);
 
-	// Application Data is where user settings go
-	if(pSHGetKnownFolderPath)
-	{
-		WCHAR* pPath = NULL;
-		if((*pSHGetKnownFolderPath)(FOLDERID_RoamingAppData, 0, NULL, &pPath) == S_OK)
-			wcscpy_s(w_str,pPath);
-		else
-			SHGetFolderPath(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE, NULL, SHGFP_TYPE_DEFAULT, w_str );
-		if(pPath)
-			CoTaskMemFree(pPath);
-	}
-	else	//XP doesn't support SHGetKnownFolderPath
-	{
-		SHGetFolderPath(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE, NULL, SHGFP_TYPE_DEFAULT, w_str );
-	}
+	CoTaskMemFree(pPath);
+	pPath = NULL;
 
 	mOSUserDir = utf16str_to_utf8str(llutf16string(w_str));
 
 	// We want cache files to go on the local disk, even if the
 	// user is on a network with a "roaming profile".
 	//
-	// On XP this is:
-	//   C:\Docments and Settings\James\Local Settings\Application Data
-	// On Vista this is:
-	//   C:\Users\James\AppData\Local
+	// On Vista and above this is:
+	//   C:\Users\<USERNAME>\AppData\Local
 	//
 	// We used to store the cache in AppData\Roaming, and the installer
 	// cleans up that version on upgrade.  JC
+	if(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &pPath) == S_OK)
+		wcscpy_s(w_str, pPath);
 
-	
-	if(pSHGetKnownFolderPath)
-	{
-		WCHAR* pPath = NULL;
-		if((*pSHGetKnownFolderPath)(FOLDERID_LocalAppData, 0, NULL, &pPath) == S_OK)
-			wcscpy_s(w_str,pPath);
-		else
-			SHGetFolderPath(NULL, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, NULL, SHGFP_TYPE_DEFAULT, w_str );
-		if(pPath)
-			CoTaskMemFree(pPath);
-	}
-	else	//XP doesn't support SHGetKnownFolderPath
-	{
-		SHGetFolderPath(NULL, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, NULL, SHGFP_TYPE_DEFAULT, w_str );
-	}
-
-	if(shell)
-		FreeLibrary(shell);
+	CoTaskMemFree(pPath);
+	pPath = NULL;
 
 	mOSCacheDir = utf16str_to_utf8str(llutf16string(w_str));
 
@@ -172,7 +140,18 @@ LLDir_Win32::LLDir_Win32()
 
 //	LL_INFOS() << "mAppRODataDir = " << mAppRODataDir << LL_ENDL;
 
-	mSkinBaseDir = mAppRODataDir + mDirDelimiter + "skins";
+	auto build_dir_pos = mExecutableDir.rfind("build-");
+	if (build_dir_pos != std::string::npos)
+	{
+		// ...we're in a dev checkout
+		mSkinBaseDir = mExecutableDir.substr(0, build_dir_pos) + "indra" + mDirDelimiter + "newview" + mDirDelimiter + "skins";
+		if (LLFile::isdir(mSkinBaseDir))
+			LL_INFOS() << "Running in dev checkout with mSkinBaseDir " << mSkinBaseDir << LL_ENDL;
+		else mSkinBaseDir.clear();
+	}
+
+	if (mSkinBaseDir.empty()) // ...normal installation running
+		mSkinBaseDir = mAppRODataDir + mDirDelimiter + "skins";
 
 	// Build the default cache directory
 	mDefaultCacheDir = buildSLOSCacheDir();
@@ -249,7 +228,7 @@ void LLDir_Win32::initAppDirs(const std::string &app_name,
 		}
 	}
 	
-	mCAFile = getExpandedFilename(LL_PATH_APP_SETTINGS, "CA.pem");
+	mCAFile = getExpandedFilename(LL_PATH_APP_SETTINGS, "ca-bundle.crt");
 }
 
 U32 LLDir_Win32::countFilesInDir(const std::string &dirname, const std::string &mask)
@@ -288,7 +267,7 @@ std::string LLDir_Win32::getCurPath()
 }
 
 
-BOOL LLDir_Win32::fileExists(const std::string &filename) const
+bool LLDir_Win32::fileExists(const std::string &filename) const
 {
 	llstat stat_data;
 	// Check the age of the file

@@ -49,7 +49,7 @@
 class LLWindowSDL : public LLWindow
 {
 public:
-	/*virtual*/ void show();
+	/*virtual*/ void show(bool focus);
 	/*virtual*/ void hide();
 	/*virtual*/ void close();
 	/*virtual*/ BOOL getVisible();
@@ -135,8 +135,6 @@ public:
 	Window mSDL_XWindowID;
 	Display *mSDL_Display;
 #endif
-	void (*Lock_Display)(void);
-	void (*Unlock_Display)(void);
 
 #if LL_GTK
 	// Lazily initialize and check the runtime GTK version for goodness.
@@ -216,6 +214,7 @@ private:
 	U32 mKeyScanCode;
         U32 mKeyVirtualKey;
 	SDLMod mKeyModifiers;
+	U32 mKeySym;
 };
 
 

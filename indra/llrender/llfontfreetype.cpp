@@ -104,7 +104,6 @@ LLFontGlyphInfo::LLFontGlyphInfo(U32 index)
 
 LLFontFreetype::LLFontFreetype()
 :	mFontBitmapCachep(new LLFontBitmapCache),
-	mValid(FALSE),
 	mAscender(0.f),
 	mDescender(0.f),
 	mLineHeight(0.f),
@@ -112,6 +111,7 @@ LLFontFreetype::LLFontFreetype()
 	mFTFace(NULL),
 	mRenderGlyphCount(0),
 	mAddGlyphCount(0),
+	mStyle(0),
 	mPointSize(0)
 {
 }
@@ -184,8 +184,8 @@ BOOL LLFontFreetype::loadFace(const std::string& filename, const F32 point_size,
 	mDescender = -mFTFace->descender * pixels_per_unit;
 	mLineHeight = mFTFace->height * pixels_per_unit;
 
-	S32 max_char_width = ll_round(0.5f + (x_max - x_min));
-	S32 max_char_height = ll_round(0.5f + (y_max - y_min));
+	S32 max_char_width = ll_pos_round(0.5f + (x_max - x_min));
+	S32 max_char_height = ll_pos_round(0.5f + (y_max - y_min));
 
 	mFontBitmapCachep->init(components, max_char_width, max_char_height);
 
@@ -203,6 +203,19 @@ BOOL LLFontFreetype::loadFace(const std::string& filename, const F32 point_size,
 
 	mName = filename;
 	mPointSize = point_size;
+
+	mStyle = LLFontGL::NORMAL;
+	if(mFTFace->style_flags & FT_STYLE_FLAG_BOLD)
+	{
+		mStyle |= LLFontGL::BOLD;
+		mStyle &= ~LLFontGL::NORMAL;
+	}
+
+	if(mFTFace->style_flags & FT_STYLE_FLAG_ITALIC)
+	{
+		mStyle |= LLFontGL::ITALIC;
+		mStyle &= ~LLFontGL::NORMAL;
+	}
 
 	return TRUE;
 }
@@ -474,10 +487,20 @@ void LLFontFreetype::renderGlyph(const U32 glyph_index) const
 	if (mFTFace == NULL)
 		return;
 
-	llassert_always(! FT_Load_Glyph(mFTFace, glyph_index, FT_LOAD_DEFAULT));
-
-	llassert_always(! FT_Render_Glyph(mFTFace->glyph, gFontRenderMode) );
-
+	FT_Error error = FT_Load_Glyph(mFTFace, glyph_index, FT_LOAD_DEFAULT);
+#ifdef SHOW_ASSERT
+	if (error)
+	{
+		LL_ERRS() << "FT_Load_Glyph returned " << error << LL_ENDL;
+	}
+#endif
+	error = FT_Render_Glyph(mFTFace->glyph, gFontRenderMode);
+#ifdef SHOW_ASSERT
+	if (error)
+	{
+		LL_ERRS() << "FT_Render_Glyph returned " << error << LL_ENDL;
+	}
+#endif
 	mRenderGlyphCount++;
 }
 
@@ -536,6 +559,15 @@ const LLPointer<LLFontBitmapCache> LLFontFreetype::getFontBitmapCache() const
 	return mFontBitmapCachep;
 }
 
+void LLFontFreetype::setStyle(U8 style)
+{
+	mStyle = style;
+}
+
+U8 LLFontFreetype::getStyle() const
+{
+	return mStyle;
+}
 void LLFontFreetype::setSubImageLuminanceAlpha(const U32 x, const U32 y, const U32 bitmap_num, const U32 width, const U32 height, const U8 *data, S32 stride) const
 {
 	LLImageRaw *image_raw = mFontBitmapCachep->getImageRaw(bitmap_num);

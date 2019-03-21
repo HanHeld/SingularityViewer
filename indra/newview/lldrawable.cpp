@@ -55,7 +55,7 @@ const F32 MAX_INTERPOLATE_DISTANCE_SQUARED = 10.f * 10.f;
 const F32 OBJECT_DAMPING_TIME_CONSTANT = 0.06f;
 const F32 MIN_SHADOW_CASTER_RADIUS = 2.0f;
 
-static LLFastTimer::DeclareTimer FTM_CULL_REBOUND("Cull Rebound");
+static LLTrace::BlockTimerStatHandle FTM_CULL_REBOUND("Cull Rebound");
 
 extern bool gShiftFrame;
 
@@ -199,16 +199,16 @@ BOOL LLDrawable::isLight() const
 	}
 }
 
-static LLFastTimer::DeclareTimer FTM_CLEANUP_DRAWABLE("Cleanup Drawable");
-static LLFastTimer::DeclareTimer FTM_DEREF_DRAWABLE("Deref");
-static LLFastTimer::DeclareTimer FTM_DELETE_FACES("Faces");
+static LLTrace::BlockTimerStatHandle FTM_CLEANUP_DRAWABLE("Cleanup Drawable");
+static LLTrace::BlockTimerStatHandle FTM_DEREF_DRAWABLE("Deref");
+static LLTrace::BlockTimerStatHandle FTM_DELETE_FACES("Faces");
 
 void LLDrawable::cleanupReferences()
 {
-	LLFastTimer t(FTM_CLEANUP_DRAWABLE);
+	LL_RECORD_BLOCK_TIME(FTM_CLEANUP_DRAWABLE);
 	
 	{
-		LLFastTimer t(FTM_DELETE_FACES);
+		LL_RECORD_BLOCK_TIME(FTM_DELETE_FACES);
 		std::for_each(mFaces.begin(), mFaces.end(), DeletePointer());
 		mFaces.clear();
 	}
@@ -220,7 +220,7 @@ void LLDrawable::cleanupReferences()
 	removeFromOctree();
 
 	{
-		LLFastTimer t(FTM_DEREF_DRAWABLE);
+		LL_RECORD_BLOCK_TIME(FTM_DEREF_DRAWABLE);
 		// Cleanup references to other objects
 		mVObjp = NULL;
 		mParent = NULL;
@@ -265,14 +265,14 @@ S32 LLDrawable::findReferences(LLDrawable *drawablep)
 	return count;
 }
 
-static LLFastTimer::DeclareTimer FTM_ALLOCATE_FACE("Allocate Face", true);
+static LLTrace::BlockTimerStatHandle FTM_ALLOCATE_FACE("Allocate Face", true);
 
 LLFace*	LLDrawable::addFace(LLFacePool *poolp, LLViewerTexture *texturep)
 {
 	
 	LLFace *face;
 	{
-		LLFastTimer t(FTM_ALLOCATE_FACE);
+		LL_RECORD_BLOCK_TIME(FTM_ALLOCATE_FACE);
 		face = new LLFace(this, mVObjp);
 	}
 
@@ -300,7 +300,7 @@ LLFace*	LLDrawable::addFace(const LLTextureEntry *te, LLViewerTexture *texturep)
 	LLFace *face;
 
 	{
-		LLFastTimer t(FTM_ALLOCATE_FACE);
+		LL_RECORD_BLOCK_TIME(FTM_ALLOCATE_FACE);
 		face = new LLFace(this, mVObjp);
 	}
 
@@ -581,7 +581,7 @@ F32 LLDrawable::updateXform(BOOL undamped)
 
 	if (damped && isVisible())
 	{
-		F32 lerp_amt = llclamp(LLCriticalDamp::getInterpolant(OBJECT_DAMPING_TIME_CONSTANT), 0.f, 1.f);
+		F32 lerp_amt = llclamp(LLSmoothInterpolation::getInterpolant(OBJECT_DAMPING_TIME_CONSTANT), 0.f, 1.f);
 		LLVector3 new_pos = lerp(old_pos, target_pos, lerp_amt);
 		dist_squared = dist_vec_squared(new_pos, target_pos);
 
@@ -1080,20 +1080,27 @@ LLSpatialPartition* LLDrawable::getSpatialPartition()
 		retval = gPipeline.getSpatialPartition((LLViewerObject*) mVObjp);
 	}
 	else if (isRoot())
-	{	//must be an active volume
+	{
+		if (mSpatialBridge && (mSpatialBridge->asPartition()->mPartitionType == LLViewerRegion::PARTITION_HUD) != mVObjp->isHUDAttachment())
+		{
+			// remove obsolete bridge
+			mSpatialBridge->markDead();
+			setSpatialBridge(NULL);
+		}
+		//must be an active volume
 		if (!mSpatialBridge)
 		{
 			if (mVObjp->isHUDAttachment())
 			{
-				setSpatialBridge(new LLHUDBridge(this));
+				setSpatialBridge(new LLHUDBridge(this, getRegion()));
 			}
 			else if (mVObjp->isAttachment())
 			{
-				setSpatialBridge(new LLAttachmentBridge(this));
+				setSpatialBridge(new LLAttachmentBridge(this, getRegion()));
 			}
 			else
 			{
-				setSpatialBridge(new LLVolumeBridge(this));
+				setSpatialBridge(new LLVolumeBridge(this, getRegion()));
 			}
 		}
 		return mSpatialBridge->asPartition();
@@ -1116,9 +1123,9 @@ LLSpatialPartition* LLDrawable::getSpatialPartition()
 // Spatial Partition Bridging Drawable
 //=======================================
 
-LLSpatialBridge::LLSpatialBridge(LLDrawable* root, BOOL render_by_group, U32 data_mask) :
+LLSpatialBridge::LLSpatialBridge(LLDrawable* root, BOOL render_by_group, U32 data_mask, LLViewerRegion* regionp) : 
 	LLDrawable(root->getVObj()),
-	LLSpatialPartition(data_mask, render_by_group, GL_STREAM_DRAW_ARB)
+	LLSpatialPartition(data_mask, render_by_group, GL_STREAM_DRAW_ARB, regionp)
 {
 	mBridge = this;
 	mDrawable = root;
@@ -1168,7 +1175,7 @@ void LLSpatialBridge::updateSpatialExtents()
 	LLSpatialGroup* root = (LLSpatialGroup*) mOctree->getListener(0);
 	
 	{
-		LLFastTimer ftm(FTM_CULL_REBOUND);
+		LL_RECORD_BLOCK_TIME(FTM_CULL_REBOUND);
 		root->rebound();
 	}
 	
@@ -1627,8 +1634,8 @@ void LLDrawable::updateFaceSize(S32 idx)
 	}
 }
 
-LLBridgePartition::LLBridgePartition()
-: LLSpatialPartition(0, FALSE, 0) 
+LLBridgePartition::LLBridgePartition(LLViewerRegion* regionp)
+: LLSpatialPartition(0, FALSE, 0, regionp) 
 { 
 	mDrawableType = LLPipeline::RENDER_TYPE_VOLUME;
 	mPartitionType = LLViewerRegion::PARTITION_BRIDGE;
@@ -1636,14 +1643,14 @@ LLBridgePartition::LLBridgePartition()
 	mSlopRatio = 0.25f;
 }
 
-LLAttachmentPartition::LLAttachmentPartition()
-: LLBridgePartition()
+LLAttachmentPartition::LLAttachmentPartition(LLViewerRegion* regionp)
+: LLBridgePartition(regionp)
 {
 	mDrawableType = LLPipeline::RENDER_TYPE_AVATAR;
 }
 
-LLHUDBridge::LLHUDBridge(LLDrawable* drawablep)
-: LLVolumeBridge(drawablep)
+LLHUDBridge::LLHUDBridge(LLDrawable* drawablep, LLViewerRegion* regionp)
+: LLVolumeBridge(drawablep, regionp)
 {
 	mDrawableType = LLPipeline::RENDER_TYPE_HUD;
 	mPartitionType = LLViewerRegion::PARTITION_HUD;

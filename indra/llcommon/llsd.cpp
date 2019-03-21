@@ -31,7 +31,6 @@
 #include "llsd.h"
 
 #include "llerror.h"
-#include "../llmath/llmath.h"
 #include "llformat.h"
 #include "llsdserialize.h"
 #include "stringize.h"
@@ -249,10 +248,10 @@ namespace
 	};
 
 	LLSD::Boolean ImplReal::asBoolean() const
-		{ return !llisnan(mValue)  &&  mValue != 0.0; }
+		{ return !std::isnan(mValue)  &&  mValue != 0.0; }
 		
 	LLSD::Integer ImplReal::asInteger() const
-		{ return !llisnan(mValue) ? (LLSD::Integer)mValue : 0; }
+		{ return !std::isnan(mValue) ? (LLSD::Integer)mValue : 0; }
 		
 	LLSD::String ImplReal::asString() const
 		{ return llformat("%lg", mValue); }
@@ -741,11 +740,9 @@ const LLSD& LLSD::Impl::undef()
 
 void LLSD::Impl::dumpStats() const
 {
-	S32 type_counts[LLSD::TypeLLSDNumTypes + 1];
-	memset(&type_counts, 0, sizeof(type_counts));
+	S32 type_counts[LLSD::TypeLLSDNumTypes + 1] = {0};
 
-	S32 share_counts[LLSD::TypeLLSDNumTypes + 1];
-	memset(&share_counts, 0, sizeof(share_counts));
+	S32 share_counts[LLSD::TypeLLSDNumTypes + 1] = {0};
 
 	// Add info from all the values this object has
 	calcStats(type_counts, share_counts);

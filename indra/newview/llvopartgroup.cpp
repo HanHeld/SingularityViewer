@@ -312,10 +312,10 @@ LLVector3 LLVOPartGroup::getCameraPosition() const
 	return gAgentCamera.getCameraPositionAgent();
 }
 
-static LLFastTimer::DeclareTimer FTM_UPDATE_PARTICLES("Update Particles");
+static LLTrace::BlockTimerStatHandle FTM_UPDATE_PARTICLES("Update Particles");
 BOOL LLVOPartGroup::updateGeometry(LLDrawable *drawable)
 {
-	LLFastTimer ftm(FTM_UPDATE_PARTICLES);
+	LL_RECORD_BLOCK_TIME(FTM_UPDATE_PARTICLES);
 
 	dirtySpatialGroup();
 	
@@ -408,8 +408,8 @@ BOOL LLVOPartGroup::updateGeometry(LLDrawable *drawable)
 		else
 			inv_camera_dist_squared = 1.f;
 
-		llassert(llfinite(inv_camera_dist_squared));
-		llassert(!llisnan(inv_camera_dist_squared));
+		llassert(std::isfinite(inv_camera_dist_squared));
+		llassert(!std::isnan(inv_camera_dist_squared));
 
 		F32 area = part->mScale.mV[0] * part->mScale.mV[1] * inv_camera_dist_squared;
 		tot_area = llmax(tot_area, area);
@@ -739,8 +739,8 @@ U32 LLVOPartGroup::getPartitionType() const
 	return LLViewerRegion::PARTITION_PARTICLE; 
 }
 
-LLParticlePartition::LLParticlePartition()
-: LLSpatialPartition(LLDrawPoolAlpha::VERTEX_DATA_MASK | LLVertexBuffer::MAP_TEXTURE_INDEX, TRUE, GL_STREAM_DRAW_ARB)
+LLParticlePartition::LLParticlePartition(LLViewerRegion* regionp)
+: LLSpatialPartition(LLDrawPoolAlpha::VERTEX_DATA_MASK | LLVertexBuffer::MAP_TEXTURE_INDEX, TRUE, GL_STREAM_DRAW_ARB, regionp)
 {
 	mRenderPass = LLRenderPass::PASS_ALPHA;
 	mDrawableType = LLPipeline::RENDER_TYPE_PARTICLES;
@@ -749,14 +749,14 @@ LLParticlePartition::LLParticlePartition()
 	mLODPeriod = 1;
 }
 
-LLHUDParticlePartition::LLHUDParticlePartition() :
-	LLParticlePartition()
+LLHUDParticlePartition::LLHUDParticlePartition(LLViewerRegion* regionp) :
+	LLParticlePartition(regionp)
 {
 	mDrawableType = LLPipeline::RENDER_TYPE_HUD_PARTICLES;
 	mPartitionType = LLViewerRegion::PARTITION_HUD_PARTICLE;
 }
 
-static LLFastTimer::DeclareTimer FTM_REBUILD_PARTICLE_VBO("Particle VBO");
+static LLTrace::BlockTimerStatHandle FTM_REBUILD_PARTICLE_VBO("Particle VBO");
 
 void LLParticlePartition::rebuildGeom(LLSpatialGroup* group)
 {
@@ -771,7 +771,7 @@ void LLParticlePartition::rebuildGeom(LLSpatialGroup* group)
 		group->mLastUpdateViewAngle = group->mViewAngle;
 	}
 	
-	LLFastTimer ftm(FTM_REBUILD_PARTICLE_VBO);	
+	LL_RECORD_BLOCK_TIME(FTM_REBUILD_PARTICLE_VBO);	
 
 	group->clearDrawMap();
 	
@@ -792,7 +792,7 @@ void LLParticlePartition::rebuildGeom(LLSpatialGroup* group)
 	else
 	{
 		group->mVertexBuffer = NULL;
-		group->mBufferMap.clear();
+		group->mBufferVec.clear();
 	}
 
 	group->mLastUpdateTime = gFrameTimeSeconds;
@@ -846,11 +846,11 @@ void LLParticlePartition::addGeometryCount(LLSpatialGroup* group, U32& vertex_co
 }
 
 
-static LLFastTimer::DeclareTimer FTM_REBUILD_PARTICLE_GEOM("Particle Geom");
+static LLTrace::BlockTimerStatHandle FTM_REBUILD_PARTICLE_GEOM("Particle Geom");
 
 void LLParticlePartition::getGeometry(LLSpatialGroup* group)
 {
-	LLFastTimer ftm(FTM_REBUILD_PARTICLE_GEOM);
+	LL_RECORD_BLOCK_TIME(FTM_REBUILD_PARTICLE_GEOM);
 
 	std::sort(mFaceList.begin(), mFaceList.end(), LLFace::CompareDistanceGreater());
 

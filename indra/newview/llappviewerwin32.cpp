@@ -55,8 +55,10 @@
 #include "llviewercontrol.h"
 #include "lldxhardware.h"
 
+#ifdef USE_NVAPI
 #include "nvapi/nvapi.h"
 #include "nvapi/NvApiDriverSettings.h"
+#endif
 
 #include <stdlib.h>
 
@@ -87,20 +89,6 @@ extern "C" {
 
 const std::string LLAppViewerWin32::sWindowClass = "Second Life";
 
-/*
-    This function is used to print to the command line a text message 
-    describing the nvapi error and quits
-*/
-void nvapi_error(NvAPI_Status status)
-{
-    NvAPI_ShortString szDesc = {0};
-	NvAPI_GetErrorMessage(status, szDesc);
-	LL_WARNS() << szDesc << LL_ENDL;
-
-	//should always trigger when asserts are enabled
-	//llassert(status == NVAPI_OK);
-}
-
 // Create app mutex creates a unique global windows object. 
 // If the object can be created it returns true, otherwise
 // it returns false. The false result can be used to determine 
@@ -122,6 +110,23 @@ bool create_app_mutex()
 	return result;
 }
 
+#ifdef USE_NVAPI
+#define NVAPI_APPNAME L"Second Life"
+
+/*
+This function is used to print to the command line a text message
+describing the nvapi error and quits
+*/
+void nvapi_error(NvAPI_Status status)
+{
+	NvAPI_ShortString szDesc = { 0 };
+	NvAPI_GetErrorMessage(status, szDesc);
+	LL_WARNS() << szDesc << LL_ENDL;
+
+	//should always trigger when asserts are enabled
+	//llassert(status == NVAPI_OK);
+}
+
 void ll_nvapi_init(NvDRSSessionHandle hSession)
 {
 	// (2) load all the system settings into the session
@@ -132,12 +137,9 @@ void ll_nvapi_init(NvDRSSessionHandle hSession)
 		return;
 	}
 
-	NvAPI_UnicodeString profile_name;
-	//std::string app_name = LLTrans::getString("APP_NAME");
-	std::string app_name("Second Life"); // <alchemy/>
-	llutf16string w_app_name = utf8str_to_utf16str(app_name);
-	wsprintf(profile_name, L"%s", w_app_name.c_str());
-	status = NvAPI_DRS_SetCurrentGlobalProfile(hSession, profile_name);
+	NvAPI_UnicodeString wsz = { 0 };
+	memcpy_s(wsz, sizeof(wsz), NVAPI_APPNAME, sizeof(NVAPI_APPNAME));
+	status = NvAPI_DRS_SetCurrentGlobalProfile(hSession, wsz);
 	if (status != NVAPI_OK)
 	{
 		nvapi_error(status);
@@ -194,6 +196,7 @@ void ll_nvapi_init(NvDRSSessionHandle hSession)
 		return;
 	}
 }
+#endif
 
 //#define DEBUGGING_SEH_FILTER 1
 #if DEBUGGING_SEH_FILTER
@@ -251,6 +254,7 @@ int APIENTRY WINMAIN(HINSTANCE hInstance,
 		return -1;
 	}
 	
+#ifdef USE_NVAPI
 	NvAPI_Status status;
     
 	// Initialize NVAPI
@@ -271,6 +275,7 @@ int APIENTRY WINMAIN(HINSTANCE hInstance,
 			ll_nvapi_init(hSession);
 		}
 	}
+#endif
 
 	// Have to wait until after logging is initialized to display LFH info
 	if (num_heaps > 0)
@@ -339,14 +344,14 @@ int APIENTRY WINMAIN(HINSTANCE hInstance,
 		LLAppViewer::sUpdaterInfo = NULL ;
 	}
 
-
-
+#ifdef USE_NVAPI
 	// (NVAPI) (6) We clean up. This is analogous to doing a free()
 	if (hSession)
 	{
 		NvAPI_DRS_DestroySession(hSession);
 		hSession = 0;
 	}
+#endif
 	
 	return 0;
 }
@@ -409,11 +414,8 @@ const S32 MAX_CONSOLE_LINES = 500;
 
 void create_console()
 {
-	int h_con_handle;
-	long l_std_handle;
 
 	CONSOLE_SCREEN_BUFFER_INFO coninfo;
-	FILE *fp;
 
 	// allocate a console for this app
 	AllocConsole();
@@ -423,48 +425,16 @@ void create_console()
 	coninfo.dwSize.Y = MAX_CONSOLE_LINES;
 	SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE), coninfo.dwSize);
 
-	// redirect unbuffered STDOUT to the console
-	l_std_handle = (long)GetStdHandle(STD_OUTPUT_HANDLE);
-	h_con_handle = _open_osfhandle(l_std_handle, _O_TEXT);
-	if (h_con_handle == -1)
-	{
-		LL_WARNS() << "create_console() failed to open stdout handle" << LL_ENDL;
-	}
-	else
-	{
-		fp = _fdopen( h_con_handle, "w" );
-		*stdout = *fp;
-		setvbuf( stdout, NULL, _IONBF, 0 );
-	}
+	// Redirect the CRT standard input, output, and error handles to the console
+	freopen("CONIN$", "r", stdin);
+	freopen("CONOUT$", "w", stdout);
+	freopen("CONOUT$", "w", stderr);
 
-	// redirect unbuffered STDIN to the console
-	l_std_handle = (long)GetStdHandle(STD_INPUT_HANDLE);
-	h_con_handle = _open_osfhandle(l_std_handle, _O_TEXT);
-	if (h_con_handle == -1)
-	{
-		LL_WARNS() << "create_console() failed to open stdin handle" << LL_ENDL;
-	}
-	else
-	{
-		fp = _fdopen( h_con_handle, "r" );
-		*stdin = *fp;
-		setvbuf( stdin, NULL, _IONBF, 0 );
-	}
+	setvbuf( stdin, NULL, _IONBF, 0 );
+	setvbuf( stdout, NULL, _IONBF, 0 );
+	setvbuf( stderr, NULL, _IONBF, 0 );
 
-	// redirect unbuffered STDERR to the console
-	l_std_handle = (long)GetStdHandle(STD_ERROR_HANDLE);
-	h_con_handle = _open_osfhandle(l_std_handle, _O_TEXT);
-	if (h_con_handle == -1)
-	{
-		LL_WARNS() << "create_console() failed to open stderr handle" << LL_ENDL;
-	}
-	else
-	{
-		fp = _fdopen( h_con_handle, "w" );
-		*stderr = *fp;
-		setvbuf( stderr, NULL, _IOFBF, 1024 );  //Assigning a buffer improves speed a LOT, esp on vista/win7
-												//_IOLBF is borked.
-	}
+
 }
 
 

@@ -250,6 +250,8 @@ public:
 
 	// support right-click context menus for avatar/group lists
 	void setContextMenu(LLMenuGL* menu) { mPopupMenu = menu; }
+	void setContextMenu(S32 index) { mPopupMenu = sMenus[index]; }
+	static void addCommonMenu(LLMenuGL* menu) { sMenus.push_back(menu); }
 
 	// Overridden from LLView
 	/*virtual*/ void    draw();
@@ -288,7 +290,7 @@ public:
 
 	static void onClickColumn(void *userdata);
 
-	virtual void updateColumns();
+	virtual void updateColumns(bool force_update = false);
 	S32 calcMaxContentWidth();
 	bool updateColumnWidths();
 	S32 getMaxContentWidth() { return mMaxContentWidth; }
@@ -322,6 +324,7 @@ public:
 	BOOL			getSortAscending() { return mSortColumns.empty() ? TRUE : mSortColumns.back().second; }
 	BOOL			hasSortOrder() const;
 	void			clearSortOrder();
+	void			setSortEnabled(bool sort);
 
 	template<typename T> S32 selectMultiple(const std::vector<T>& vec)
 	{
@@ -368,6 +371,7 @@ public:
 		return mSortCallback->connect(cb);
 	}
 
+	S32				getLinesPerPage();
 
 protected:
 	// "Full" interface: use this when you're creating a list that has one or more of the following:
@@ -404,7 +408,6 @@ private:
 	void			deselectItem(LLScrollListItem* itemp);
 	void			commitIfChanged();
 	BOOL			setSort(S32 column, BOOL ascending);
-	S32				getLinesPerPage();
 
 	S32				mLineHeight;	// the max height of a single line
 	S32				mScrollLines;	// how many lines we've scrolled down
@@ -423,6 +426,7 @@ private:
 	bool			mDisplayColumnHeaders;
 	bool			mColumnsDirty;
 	bool			mColumnWidthsDirty;
+	bool			mSortEnabled;
 
 	mutable item_list	mItemList;
 
@@ -454,6 +458,8 @@ private:
 	S32				mHighlightedItem;
 	class LLViewBorder*	mBorder;
 	LLMenuGL	*mPopupMenu;
+
+	static std::vector<LLMenuGL*> sMenus; // List menus that recur, such as general avatars or groups menus
 	
 	LLView			*mCommentTextView;
 

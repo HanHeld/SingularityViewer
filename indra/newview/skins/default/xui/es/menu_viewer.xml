@@ -108,14 +108,25 @@
 		<menu_item_call label="Crear un Hito Aquí" name="Create Landmark Here"/>
 		<menu_item_call label="Fijar Base Aquí" name="Set Home to Here"/>
 		<menu_item_call label="Teleportar a Base" name="Teleport Home"/>
-		<menu_item_call label="Falso Estado Ausente" name="Fake Away Status"/>
-		<menu_item_call label="Pasar a Estado Ausente" name="Set Away"/>
-		<menu_item_call label="Pasar a Estado Ocupado" name="Set Busy"/>
+		<menu label="Estado" name="Status">
+			<menu_item_call label="Falso Estado Ausente" name="Fake Away Status"/>
+			<menu_item_call label="Pasar a Estado Ausente" name="Set Away"/>
+			<menu_item_call label="Pasar a Estado Ocupado" name="Set Busy"/>
+			<menu label="Respuesta Automática" name="Autoresponse">
+				<menu_item_check label="Repetir" name="Repeat"/>
+				<menu_item_check label="Sólo en estado Ausente" name="Only send when away"/>
+				<menu_item_check label="General" name="General"/>
+				<menu_item_check label="&#8226;Sólo Amigos" name="Friends Only"/>
+				<menu_item_check label="No Amigos" name="Non-Friends"/>
+				<menu_item_check label="Ignorados" name="Muted"/>
+			</menu>
+			<menu_item_check label="Sentarte al estar Ausente" name="Sit when away"/>
+		</menu>		
 		<menu_item_call label="Detener las animaciones del Avatar" name="Stop Animating My Avatar"/>
 		<menu_item_call label="Liberar Teclas" name="Release Keys"/>
 		<menu_item_call label="Historial de la Cuenta..." name="Account History..."/>
 		<menu_item_call label="Administrar mi Cuenta..." name="Manage My Account..."/>
-        <menu_item_check label="Buzón de Salida de Comerciante..." name="MerchantOutbox"/>
+        <menu_item_check label="Artículos del Mercado..." name="MarketplaceListings"/>
 		<menu_item_call label="Comprar [CURRENCY]..." name="Buy and Sell L$..."/>
         <menu_item_call label="Mis Vestuarios" name="My Outfits"/>
         <menu_item_call label="Favoritos" name="Favorites"/>
@@ -177,7 +188,7 @@
 		<menu_item_call label="Devolver Objeto al Contenido de Objetos" name="Save Object Back to Object Contents"/>
 		<menu_item_call label="Administrador: Borrar" name="Admin Delete"/>
 		<menu_item_call label="Mostrar ventana de avisos/errores de Script " name="Show Script Warning/Error Window"/>
-		<menu label="Recompilar Scripts de la Selección" name="Recompilar Scripts in Selection">
+		<menu label="Recompilar Scripts de la Selección" name="Recompile Scripts in Selection">
 			<menu_item_call label="Mono" name="Mono"/>
 			<menu_item_call label="LSL" name="LSL"/>
 		</menu>
@@ -210,8 +221,12 @@
 			<menu_item_call label="Wiki de QA..." name="QA Wiki..."/>
 			<menu_item_call label="Informar Fallos..." name="Report Bug..."/>
 			<menu_item_call label="Informar Fallos de [SHORT_APP_NAME]..." name="Report [SHORT_APP_NAME] Bug..."/>
-			<menu_item_call label="Solicitar Nueva Característica..." name="Request New Feature..."/>			
+			<menu_item_call label="Solicitar Nueva Característica..." name="Request New Feature..."/>
 		</menu>
+		<menu_item_call label="[SHORT_APP_NAME] Group" name="viewer group">
+			<on_click function="URLAction" userdata="secondlife:///app/group/ce736e80-376b-e057-1722-431d1daa363e/about"/>
+			<on_visible function="VisibleSecondLife"/>
+		</menu_item_call>
 		<menu_item_call label="Acerca de [APP_NAME]..." name="About Second Life..."/>
 	</menu>
 	<!-- ============================= -->

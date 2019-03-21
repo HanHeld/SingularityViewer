@@ -57,7 +57,7 @@
 
 static LLRegisterWidget<LLScrollListCtrl> r("scroll_list");
 
-LLMenuGL* sScrollListMenus[1] = {}; // List menus that recur, such as general avatars or groups menus
+std::vector<LLMenuGL*> LLScrollListCtrl::sMenus = {}; // List menus that recur, such as general avatars or groups menus
 
 // local structures & classes.
 struct SortScrollListItem
@@ -125,6 +125,7 @@ LLScrollListCtrl::LLScrollListCtrl(const std::string& name, const LLRect& rect, 
 	mNeedsScroll(false),
 	mCanSelect(true),
 	mColumnsDirty(false),
+	mSortEnabled(true),
 	mMaxItemCount(INT_MAX), 
 	mMaxContentWidth(0),
 	mBorderThickness( 2 ),
@@ -501,12 +502,14 @@ BOOL LLScrollListCtrl::addItem( LLScrollListItem* item, EAddPosition pos, BOOL r
 	
 		case ADD_SORTED:
 			{
-				// sort by column 0, in ascending order
-				std::vector<sort_column_t> single_sort_column;
-				single_sort_column.push_back(std::make_pair(0, TRUE));
-
 				mItemList.push_back(item);
-				std::stable_sort(mItemList.begin(), mItemList.end(), SortScrollListItem(single_sort_column,mSortCallback));
+				// std::stable_sort is expensive. Only do this if the user sort criteria is not column 0, otherwise 
+				// setNeedsSort does what we want.
+				if (mSortColumns.empty() || mSortColumns[0].first != 0)
+				{
+					// sort by column 0, in ascending order
+					std::stable_sort(mItemList.begin(), mItemList.end(), SortScrollListItem({ {0,true} }, mSortCallback));
+				}
 
 				// ADD_SORTED just sorts by first column...
 				// this might not match user sort criteria, so flag list as being in unsorted state
@@ -570,7 +573,6 @@ S32 LLScrollListCtrl::calcMaxContentWidth()
 
 		if (mColumnWidthsDirty)
 		{
-			mColumnWidthsDirty = false;
 			// update max content width for this column, by looking at all items
 			column->mMaxContentWidth = column->mHeader ? LLFontGL::getFontSansSerifSmall()->getWidth(column->mLabel.getWString()) + mColumnPadding + HEADING_TEXT_PADDING : 0;
 			item_list::iterator iter;
@@ -584,8 +586,8 @@ S32 LLScrollListCtrl::calcMaxContentWidth()
 		}
 		max_item_width += column->mMaxContentWidth;
 	}
+	mColumnWidthsDirty = false;
 
-	mMaxContentWidth = max_item_width;
 	return max_item_width;
 }
 
@@ -599,7 +601,7 @@ bool LLScrollListCtrl::updateColumnWidths()
 		if (!column) continue;
 
 		// update column width
-		S32 new_width = column->getWidth();
+		S32 new_width = 0;
 		if (column->mRelWidth >= 0)
 		{
 			new_width = (S32)ll_round(column->mRelWidth*mItemListRect.getWidth());
@@ -607,6 +609,10 @@ bool LLScrollListCtrl::updateColumnWidths()
 		else if (column->mDynamicWidth)
 		{
 			new_width = (mItemListRect.getWidth() - mTotalStaticColumnWidth - mTotalColumnPadding) / mNumDynamicWidthColumns;
+		}
+		else
+		{
+			new_width = column->getWidth();
 		}
 
 		if (column->getWidth() != new_width)
@@ -650,9 +656,9 @@ void LLScrollListCtrl::updateLineHeightInsert(LLScrollListItem* itemp)
 }
 
 
-void LLScrollListCtrl::updateColumns()
+void LLScrollListCtrl::updateColumns(bool force_update)
 {
-	if (!mColumnsDirty)
+	if (!mColumnsDirty && !force_update)
 		return;
 
 	mColumnsDirty = false;
@@ -706,7 +712,7 @@ void LLScrollListCtrl::updateColumns()
 	}
 
 	// propagate column widths to individual cells
-	if (columns_changed_width)
+	if (columns_changed_width || force_update)
 	{
 		item_list::iterator iter;
 		for (iter = mItemList.begin(); iter != mItemList.end(); iter++)
@@ -1397,7 +1403,16 @@ void LLScrollListCtrl::drawItems()
 	{
 		LLLocalClipRect clip(mItemListRect);
 
-		S32 cur_y = y;
+		LLRect clip_rect = LLUI::getRootView()->getRect();
+		if (LLGLState<GL_SCISSOR_TEST>::isEnabled())
+		{
+			LLRect scissor = gGL.getScissor();
+			scissor.mLeft /= LLUI::getScaleFactor().mV[VX];
+			scissor.mTop /= LLUI::getScaleFactor().mV[VY];
+			scissor.mRight /= LLUI::getScaleFactor().mV[VX];
+			scissor.mBottom /= LLUI::getScaleFactor().mV[VY];
+			clip_rect.intersectWith(scissor);
+		}
 
 		S32 max_columns = 0;
 
@@ -1412,55 +1427,70 @@ void LLScrollListCtrl::drawItems()
 		{
 			return;
 		}
-		item_list::iterator iter;
-		for (S32 line = first_line; line <= last_line; line++)
+		bool done = false;
+		for (S32 pass = 0; !done; ++pass)
 		{
-			LLScrollListItem* item = mItemList[line];
-			
-			item_rect.setOriginAndSize( 
-				x, 
-				cur_y, 
-				mItemListRect.getWidth(),
-				mLineHeight );
-			item->setRect(item_rect);
-
-			//LL_INFOS() << item_rect.getWidth() << LL_ENDL;
-
-			max_columns = llmax(max_columns, item->getNumColumns());
-
-			LLColor4 fg_color;
-			LLColor4 bg_color(LLColor4::transparent);
-
-			if( mScrollLines <= line && line < mScrollLines + num_page_lines )
+			bool should_continue = false; // False until all passes are done for all row cells.
+			S32 cur_y = y;
+			for (S32 line = first_line; line <= last_line; line++)
 			{
-				fg_color = (item->getEnabled() ? mFgUnselectedColor : mFgDisabledColor);
-				if( item->getSelected() && mCanSelect)
+				LLScrollListItem* item = mItemList[line];
+
+				item_rect.setOriginAndSize(
+					x,
+					cur_y,
+					mItemListRect.getWidth(),
+					mLineHeight);
+				item->setRect(item_rect);
+
+				//LL_INFOS() << item_rect.getWidth() << LL_ENDL;
+
+				max_columns = llmax(max_columns, item->getNumColumns());
+
+				LLColor4 fg_color;
+				LLColor4 bg_color(LLColor4::transparent);
+
+				if (mScrollLines <= line && line < mScrollLines + num_page_lines)
 				{
-					bg_color = mBgSelectedColor;
-					fg_color = (item->getEnabled() ? mFgSelectedColor : mFgDisabledColor);
-				}
-				else if (mHighlightedItem == line && mCanSelect)
-				{
-					bg_color = mHighlightedColor;
-				}
-				else 
-				{
-					if (mDrawStripes && (line % 2 == 0) && (max_columns > 1))
+					cur_y -= mLineHeight;
+
+					// Do not draw if not on screen.
+					LLRect screen_rect = item_rect;
+					screen_rect.translate(LLFontGL::sCurOrigin.mX, LLFontGL::sCurOrigin.mY);
+					if (!clip_rect.overlaps(screen_rect))
 					{
-						bg_color = mBgStripeColor;
+						continue;
 					}
+
+					fg_color = (item->getEnabled() ? mFgUnselectedColor : mFgDisabledColor);
+					if (item->getSelected() && mCanSelect)
+					{
+						bg_color = mBgSelectedColor;
+						fg_color = (item->getEnabled() ? mFgSelectedColor : mFgDisabledColor);
+					}
+					else if (mHighlightedItem == line && mCanSelect)
+					{
+						bg_color = mHighlightedColor;
+					}
+					else
+					{
+						if (mDrawStripes && (line % 2 == 0) && (max_columns > 1))
+						{
+							bg_color = mBgStripeColor;
+						}
+					}
+
+					if (!item->getEnabled())
+					{
+						bg_color = mBgReadOnlyColor;
+					}
+
+					should_continue |= item->draw(pass, item_rect, fg_color, bg_color, highlight_color, mColumnPadding);
 				}
-
-				if (!item->getEnabled())
-				{
-					bg_color = mBgReadOnlyColor;
-				}
-
-				item->draw(item_rect, fg_color, bg_color, highlight_color, mColumnPadding);
-
-				cur_y -= mLineHeight;
 			}
+			done = !should_continue;
 		}
+
 	}
 }
 
@@ -2298,6 +2328,16 @@ BOOL LLScrollListCtrl::setSort(S32 column_idx, BOOL ascending)
 	}
 }
 
+void LLScrollListCtrl::setSortEnabled(bool sort)
+{
+	bool update = sort && !mSortEnabled;
+	mSortEnabled = sort;
+	if (update)
+	{
+		updateSort();
+	}
+}
+
 S32	LLScrollListCtrl::getLinesPerPage()
 {
 	//if mPageLines is NOT provided display all item
@@ -2560,7 +2600,7 @@ void LLScrollListCtrl::setScrollListParameters(LLXMLNodePtr node)
 		// 0 is menu_avs_list.xml, 1 will be for groups, 2 could be for lists of objects
 		S32 menu_num;
 		node->getAttributeS32("menu_num", menu_num);
-		mPopupMenu = sScrollListMenus[menu_num];
+		setContextMenu(menu_num);
 	}
 	else if (node->hasAttribute("menu_file"))
 	{
@@ -2939,7 +2979,7 @@ std::string LLScrollListCtrl::getSortColumnName()
 
 BOOL LLScrollListCtrl::hasSortOrder() const
 {
-	return !mSortColumns.empty();
+	return mSortEnabled && !mSortColumns.empty();
 }
 
 void LLScrollListCtrl::clearSortOrder()
@@ -3017,10 +3057,10 @@ void LLScrollListCtrl::setColumnHeadings(const LLSD& headings)
 		"width"
 		"dynamic_width"
 */
-LLFastTimer::DeclareTimer FTM_ADD_SCROLLLIST_ELEMENT("Add Scroll List Item");
+LLTrace::BlockTimerStatHandle FTM_ADD_SCROLLLIST_ELEMENT("Add Scroll List Item");
 LLScrollListItem* LLScrollListCtrl::addElement(const LLSD& element, EAddPosition pos, void* userdata)
 {
-	LLFastTimer _(FTM_ADD_SCROLLLIST_ELEMENT);
+	LL_RECORD_BLOCK_TIME(FTM_ADD_SCROLLLIST_ELEMENT);
 	LLScrollListItem::Params item_params;
 	LLParamSDParser parser;
 	parser.readSD(element, item_params);
@@ -3030,14 +3070,14 @@ LLScrollListItem* LLScrollListCtrl::addElement(const LLSD& element, EAddPosition
 
 LLScrollListItem* LLScrollListCtrl::addRow(const LLScrollListItem::Params& item_p, EAddPosition pos)
 {
-	LLFastTimer _(FTM_ADD_SCROLLLIST_ELEMENT);
+	LL_RECORD_BLOCK_TIME(FTM_ADD_SCROLLLIST_ELEMENT);
 	LLScrollListItem *new_item = new LLScrollListItem(item_p);
 	return addRow(new_item, item_p, pos);
 }
 
 LLScrollListItem* LLScrollListCtrl::addRow(LLScrollListItem *new_item, const LLScrollListItem::Params& item_p, EAddPosition pos)
 {
-	LLFastTimer _(FTM_ADD_SCROLLLIST_ELEMENT);
+	LL_RECORD_BLOCK_TIME(FTM_ADD_SCROLLLIST_ELEMENT);
 	if (!item_p.validateBlock() || !new_item) return NULL;
 	new_item->setNumColumns(mColumns.size());
 

@@ -54,27 +54,27 @@ class LLAgent;			// TODO: Get rid of this.
 class LLAudioSource;
 class LLAudioSourceVO;
 class LLBBox;
-class LLDataPacker;
 class LLColor4;
-class LLFrameTimer;
+class LLDataPacker;
 class LLDrawable;
+class LLFrameTimer;
 class LLHost;
-class LLWorld;
+class LLMessageSystem;
 class LLNameValue;
 class LLNetMap;
-class LLMessageSystem;
 class LLPartSysData;
-class LLPrimitive;
 class LLPipeline;
+class LLPrimitive;
 class LLTextureEntry;
-class LLViewerTexture;
+class LLVOAvatar;
+class LLVOInventoryListener;
 class LLViewerInventoryItem;
 class LLViewerObject;
+class LLViewerObjectMedia;
 class LLViewerPartSourceScript;
 class LLViewerRegion;
-class LLViewerObjectMedia;
-class LLVOInventoryListener;
-class LLVOAvatar;
+class LLViewerTexture;
+class LLWorld;
 
 typedef enum e_object_update_type
 {
@@ -112,7 +112,7 @@ struct PotentialReturnableObject
 
 //============================================================================
 
-class LLViewerObject : public LLPrimitive, public LLRefCount, public LLGLUpdate
+class LLViewerObject: public LLPrimitive, public LLRefCount, public LLGLUpdate
 {
 protected:
 	~LLViewerObject(); // use unref()
@@ -140,6 +140,8 @@ public:
 	BOOL isParticleSource() const;
 
 	virtual LLVOAvatar* asAvatar();
+
+	LLVOAvatar* getAvatarAncestor();
 
 	static void initVOClasses();
 	static void cleanupVOClasses();
@@ -444,8 +446,8 @@ public:
 	void removeInventoryListener(LLVOInventoryListener* listener);
 	BOOL isInventoryPending() { return mInventoryPending; }
 	void clearInventoryListeners();
+	bool hasInventoryListeners();
 	void requestInventory();
-	void fetchInventoryFromServer();
 	static void processTaskInv(LLMessageSystem* msg, void** user_data);
 	void removeInventory(const LLUUID& item_id);
 
@@ -591,7 +593,10 @@ private:
     U32 checkMediaURL(const std::string &media_url);
 	
 	// Motion prediction between updates
-	void interpolateLinearMotion(const F64 & time, const F32 & dt);
+	void interpolateLinearMotion(const F64SecondsImplicit & time, const F32SecondsImplicit & dt);
+
+	// forms task inventory request if none are pending
+	void fetchInventoryFromServer();
 
 public:
 	//
@@ -710,8 +715,6 @@ protected:
 	void deleteParticleSource();
 	void setParticleSource(const LLPartSysData& particle_parameters, const LLUUID& owner_id);
 
-public:
-
 private:
 	void setNameValueList(const std::string& list);		// clears nv pairs and then individually adds \n separated NV pairs from \0 terminated string
 	void deleteTEImages(); // correctly deletes list of images
@@ -722,8 +725,8 @@ protected:
 
 	child_list_t	mChildList;
 	
-	F64				mLastInterpUpdateSecs;			// Last update for purposes of interpolation
-	F64				mLastMessageUpdateSecs;			// Last update from a message from the simulator
+	F64Seconds		mLastInterpUpdateSecs;			// Last update for purposes of interpolation
+	F64Seconds		mLastMessageUpdateSecs;			// Last update from a message from the simulator
 	TPACKETID		mLatestRecvPacketID;			// Latest time stamp on message from simulator
 
 	// extra data sent from the sim...currently only used for tree species info
@@ -765,7 +768,6 @@ protected:
 	BOOL			mStatic;					// Object doesn't move.
 	S32				mNumFaces;
 
-	F32				mTimeDilation;				// Time dilation sent with the object.
 	F32				mRotTime;					// Amount (in seconds) that object has rotated according to angular velocity (llSetTargetOmega)
 	LLQuaternion	mAngularVelocityRot;		// accumulated rotation from the angular velocity computations
 	LLQuaternion	mPreviousRotation;
@@ -791,12 +793,13 @@ protected:
 
 	static			S32			sAxisArrowLength;
 
+
 	// These two caches are only correct for non-parented objects right now!
 	mutable LLVector3		mPositionRegion;
 	mutable LLVector3		mPositionAgent;
 
-	static void setPhaseOutUpdateInterpolationTime(F32 value)	{ sPhaseOutUpdateInterpolationTime = (F64) value;	}
-	static void setMaxUpdateInterpolationTime(F32 value)		{ sMaxUpdateInterpolationTime = (F64) value;	}
+	static void setPhaseOutUpdateInterpolationTime(F32 value)	{ sPhaseOutUpdateInterpolationTime = (F64Seconds) value;	}
+	static void setMaxUpdateInterpolationTime(F32 value)		{ sMaxUpdateInterpolationTime = (F64Seconds) value;	}
 
 	static void	setVelocityInterpolate(BOOL value)		{ sVelocityInterpolate = value;	}
 	static void	setPingInterpolate(BOOL value)			{ sPingInterpolate = value;	}
@@ -804,8 +807,8 @@ protected:
 private:	
 	static S32 sNumObjects;
 
-	static F64 sPhaseOutUpdateInterpolationTime;	// For motion interpolation
-	static F64 sMaxUpdateInterpolationTime;			// For motion interpolation
+	static F64Seconds sPhaseOutUpdateInterpolationTime;	// For motion interpolation
+	static F64Seconds sMaxUpdateInterpolationTime;		// For motion interpolation
 
 	static BOOL sVelocityInterpolate;
 	static BOOL sPingInterpolate;

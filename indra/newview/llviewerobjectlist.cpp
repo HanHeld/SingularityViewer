@@ -101,6 +101,15 @@ class AIHTTPTimeoutPolicy;
 extern AIHTTPTimeoutPolicy objectCostResponder_timeout;
 extern AIHTTPTimeoutPolicy physicsFlagsResponder_timeout;
 
+// <singu>
+#include "llimpanel.h"
+#include "llimview.h"
+LLFloaterIMPanel* find_im_floater(const LLUUID& id)
+{
+	return gIMMgr->findFloaterBySession(id ^ gAgentID);
+}
+// </singu>
+
 #define CULL_VIS
 //#define ORPHAN_SPAM
 //#define IGNORE_DEAD
@@ -314,14 +323,14 @@ void LLViewerObjectList::processUpdateCore(LLViewerObject* objectp,
 	}
 }
 
-static LLFastTimer::DeclareTimer FTM_PROCESS_OBJECTS("Process Objects");
+static LLTrace::BlockTimerStatHandle FTM_PROCESS_OBJECTS("Process Objects");
 
 void LLViewerObjectList::processObjectUpdate(LLMessageSystem *mesgsys,
 											 void **user_data,
 											 const EObjectUpdateType update_type,
 											 bool cached, bool compressed)
 {
-	LLFastTimer t(FTM_PROCESS_OBJECTS);	
+	LL_RECORD_BLOCK_TIME(FTM_PROCESS_OBJECTS);	
 	
 	LLViewerObject *objectp;
 	S32			num_objects;
@@ -442,7 +451,7 @@ void LLViewerObjectList::processObjectUpdate(LLMessageSystem *mesgsys,
 				compressed_dp.unpackU32(local_id, "LocalID");
 				compressed_dp.unpackU8(pcode, "PCode");
 			}
-			else
+			else //OUT_TERSE_IMPROVED
 			{
 				compressed_dp.unpackU32(local_id, "LocalID");
 				getUUIDFromLocal(fullid,
@@ -451,7 +460,7 @@ void LLViewerObjectList::processObjectUpdate(LLMessageSystem *mesgsys,
 								 gMessageSystem->getSenderPort());
 				if (fullid.isNull())
 				{
-					// LL_WARNS() << "update for unknown localid " << local_id << " host " << gMessageSystem->getSender() << ":" << gMessageSystem->getSenderPort() << LL_ENDL;
+					LL_DEBUGS() << "update for unknown localid " << local_id << " host " << gMessageSystem->getSender() << ":" << gMessageSystem->getSenderPort() << LL_ENDL;
 					mNumUnknownUpdates++;
 				}
 			}
@@ -556,7 +565,7 @@ void LLViewerObjectList::processObjectUpdate(LLMessageSystem *mesgsys,
 			if(std::find(LLFloaterBlacklist::blacklist_objects.begin(),
 				LLFloaterBlacklist::blacklist_objects.end(),fullid) != LLFloaterBlacklist::blacklist_objects.end())
 			{
-				LL_INFOS() << "Blacklisted object asset " << fullid.asString() << " blocked." << LL_ENDL; 
+				//LL_INFOS() << "Blacklisted object asset " << fullid.asString() << " blocked." << LL_ENDL; 
 				continue;
 			}
 
@@ -961,10 +970,10 @@ void LLViewerObjectList::update(LLAgent &agent, LLWorld &world)
 
 	U32 idle_count = 0;
 		
-	static LLFastTimer::DeclareTimer idle_copy("Idle Copy");
+	static LLTrace::BlockTimerStatHandle idle_copy("Idle Copy");
 
 	{
-		LLFastTimer t(idle_copy);
+		LL_RECORD_BLOCK_TIME(idle_copy);
 
  		for (std::vector<LLPointer<LLViewerObject> >::iterator active_iter = mActiveObjects.begin();
 			active_iter != mActiveObjects.end(); active_iter++)
@@ -1256,7 +1265,11 @@ void LLViewerObjectList::cleanupReferences(LLViewerObject *objectp)
 	// Remove from object map so noone can look it up.
 
 	mUUIDObjectMap.erase(objectp->mID);
-	mUUIDAvatarMap.erase(objectp->mID);//No need to be careful here.
+	// <singu> Use the return value (number of erased elements) to determine if we were an avatar.
+	if (mUUIDAvatarMap.erase(objectp->mID)) //No need to be careful here.
+		if (LLFloaterIMPanel* im = find_im_floater(objectp->mID))
+			im->removeDynamicFocus();
+	// </singu>
 	
 	//if (objectp->getRegion())
 	//{
@@ -1286,11 +1299,11 @@ void LLViewerObjectList::cleanupReferences(LLViewerObject *objectp)
 	mNumDeadObjects++;
 }
 
-static LLFastTimer::DeclareTimer FTM_REMOVE_DRAWABLE("Remove Drawable");
+static LLTrace::BlockTimerStatHandle FTM_REMOVE_DRAWABLE("Remove Drawable");
 
 void LLViewerObjectList::removeDrawable(LLDrawable* drawablep)
 {
-	LLFastTimer t(FTM_REMOVE_DRAWABLE);
+	LL_RECORD_BLOCK_TIME(FTM_REMOVE_DRAWABLE);
 
 	if (!drawablep)
 	{
@@ -1589,9 +1602,9 @@ void LLViewerObjectList::onPhysicsFlagsFetchFailure(const LLUUID& object_id)
 	mPendingPhysicsFlags.erase(object_id);
 }
 
-static LLFastTimer::DeclareTimer FTM_SHIFT_OBJECTS("Shift Objects");
-static LLFastTimer::DeclareTimer FTM_PIPELINE_SHIFT("Pipeline Shift");
-static LLFastTimer::DeclareTimer FTM_REGION_SHIFT("Region Shift");
+static LLTrace::BlockTimerStatHandle FTM_SHIFT_OBJECTS("Shift Objects");
+static LLTrace::BlockTimerStatHandle FTM_PIPELINE_SHIFT("Pipeline Shift");
+static LLTrace::BlockTimerStatHandle FTM_REGION_SHIFT("Region Shift");
 
 void LLViewerObjectList::shiftObjects(const LLVector3 &offset)
 {
@@ -1604,7 +1617,7 @@ void LLViewerObjectList::shiftObjects(const LLVector3 &offset)
 		return;
 	}
 
-	LLFastTimer t(FTM_SHIFT_OBJECTS);
+	LL_RECORD_BLOCK_TIME(FTM_SHIFT_OBJECTS);
 
 	LLViewerObject *objectp;
 	for (vobj_list_t::iterator iter = mObjects.begin(); iter != mObjects.end(); ++iter)
@@ -1623,12 +1636,12 @@ void LLViewerObjectList::shiftObjects(const LLVector3 &offset)
 	}
 
 	{
-		LLFastTimer t(FTM_PIPELINE_SHIFT);
+		LL_RECORD_BLOCK_TIME(FTM_PIPELINE_SHIFT);
 		gPipeline.shiftObjects(offset);
 	}
 
 	{
-		LLFastTimer t(FTM_REGION_SHIFT);
+		LL_RECORD_BLOCK_TIME(FTM_REGION_SHIFT);
 		LLWorld::getInstance()->shiftRegions(offset);
 	}
 }
@@ -1978,7 +1991,13 @@ LLViewerObject *LLViewerObjectList::createObjectViewer(const LLPCode pcode, LLVi
 	{
 		LLVOAvatar *pAvatar = dynamic_cast<LLVOAvatar*>(objectp);
 		if(pAvatar)
+		{
 			mUUIDAvatarMap[fullid] = pAvatar;
+			// <singu>
+			if (LLFloaterIMPanel* im = find_im_floater(fullid))
+				im->addDynamicFocus();
+			// </singu>
+		}
 	}
 
 	mObjects.push_back(objectp);
@@ -1989,12 +2008,12 @@ LLViewerObject *LLViewerObjectList::createObjectViewer(const LLPCode pcode, LLVi
 }
 
 
-static LLFastTimer::DeclareTimer FTM_CREATE_OBJECT("Create Object");
+static LLTrace::BlockTimerStatHandle FTM_CREATE_OBJECT("Create Object");
 
 LLViewerObject *LLViewerObjectList::createObject(const LLPCode pcode, LLViewerRegion *regionp,
 												 const LLUUID &uuid, const U32 local_id, const LLHost &sender)
 {
-	LLFastTimer t(FTM_CREATE_OBJECT);
+	LL_RECORD_BLOCK_TIME(FTM_CREATE_OBJECT);
 	
 	LLUUID fullid;
 	if (uuid == LLUUID::null)
@@ -2018,7 +2037,13 @@ LLViewerObject *LLViewerObjectList::createObject(const LLPCode pcode, LLViewerRe
 	{
 		LLVOAvatar *pAvatar = dynamic_cast<LLVOAvatar*>(objectp);
 		if(pAvatar)
+		{
 			mUUIDAvatarMap[fullid] = pAvatar;
+			// <singu>
+			if (LLFloaterIMPanel* im = find_im_floater(fullid))
+				im->addDynamicFocus();
+			// </singu>
+		}
 	}
 	setUUIDAndLocal(fullid,
 					local_id,

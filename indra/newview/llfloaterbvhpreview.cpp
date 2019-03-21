@@ -144,14 +144,13 @@ std::string STATUS[] =
 // LLFloaterBvhPreview()
 //-----------------------------------------------------------------------------
 LLFloaterBvhPreview::LLFloaterBvhPreview(const std::string& filename, void* item) :
-	LLFloaterNameDesc(filename, item)
+	LLFloaterNameDesc(filename, item),
+	mItem(item), //<edit/>
+	mLastMouseX(0),
+	mLastMouseY(0),
+	mPlayButton(nullptr),
+	mStopButton(nullptr)
 {
-	//<edit>
-	mItem = item;
-	//<edit>
-	mLastMouseX = 0;
-	mLastMouseY = 0;
-
 	mIDList["Standing"] = ANIM_AGENT_STAND;
 	mIDList["Walking"] = ANIM_AGENT_FEMALE_WALK;
 	mIDList["Sitting"] = ANIM_AGENT_SIT_FEMALE;
@@ -353,7 +352,7 @@ BOOL LLFloaterBvhPreview::postBuild()
 		// pass animation data through memory buffer
 		loaderp->serialize(dp);
 		dp.reset();
-				success = motionp && motionp->deserialize(dp);
+				success = motionp && motionp->deserialize(dp, mMotionID);
 			}
 			else
 			{
@@ -412,7 +411,7 @@ BOOL LLFloaterBvhPreview::postBuild()
 				motionp = (LLKeyframeMotion*)mAnimPreview->getDummyAvatar()->createMotion(mMotionID);
 				LLDataPackerBinaryBuffer dp((U8*)file_buffer, file_size);
 				dp.reset();
-				success = motionp && motionp->deserialize(dp);
+				success = motionp && motionp->deserialize(dp, mMotionID);
 			}
 
 			raw_animatn.close();
@@ -524,16 +523,16 @@ void LLFloaterBvhPreview::draw()
 
 		gGL.getTexUnit(0)->bind(mAnimPreview);
 
-		gGL.begin( LLRender::QUADS );
+		gGL.begin( LLRender::TRIANGLE_STRIP );
 		{
 			gGL.texCoord2f(0.f, 1.f);
 			gGL.vertex2i(PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT);
 			gGL.texCoord2f(0.f, 0.f);
 			gGL.vertex2i(PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
-			gGL.texCoord2f(1.f, 0.f);
-			gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
 			gGL.texCoord2f(1.f, 1.f);
 			gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_TEXTURE_HEIGHT);
+			gGL.texCoord2f(1.f, 0.f);
+			gGL.vertex2i(r.getWidth() - PREVIEW_HPAD, PREVIEW_HPAD + PREF_BUTTON_HEIGHT + PREVIEW_HPAD);
 		}
 		gGL.end();
 

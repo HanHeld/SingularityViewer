@@ -132,8 +132,6 @@ LLNetMap::LLNetMap(const std::string& name) :
 	mClosestAgentToCursor(),
 	mPopupMenu(NULL)
 {
-	mPixelsPerMeter = mScale / REGION_WIDTH_METERS;
-	mDotRadius = llmax(DOT_SCALE * mPixelsPerMeter, MIN_DOT_RADIUS);
 	setScale(gSavedSettings.getF32("MiniMapScale"));
 
 	LLUICtrlFactory::getInstance()->buildPanel(this, "panel_mini_map.xml");
@@ -262,27 +260,18 @@ void LLNetMap::draw()
 	static LLUICachedControl<S32> center("MiniMapCenter");
 	if (center != MAP_CENTER_NONE)
 	{
-		mCurPan = lerp(mCurPan, mTargetPan, LLCriticalDamp::getInterpolant(0.1f));
+		mCurPan = lerp(mCurPan, mTargetPan, LLSmoothInterpolation::getInterpolant(0.1f));
 	}
 
 	// Prepare a scissor region
 	F32 rotation = 0;
 
-	gGL.pushMatrix();
 	gGL.pushUIMatrix();
-	
-	LLVector3 offset = gGL.getUITranslation();
-	LLVector3 scale = gGL.getUIScale();
 
-	gGL.loadIdentity();
-	gGL.loadUIIdentity();
-	gGL.scalef(scale.mV[0], scale.mV[1], scale.mV[2]);
-	gGL.translatef(offset.mV[0], offset.mV[1], offset.mV[2]);
 	{
 		LLLocalClipRect clip(getLocalRect());
 		{
 			gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-			gGL.matrixMode(LLRender::MM_MODELVIEW);
 
 			// Draw background rectangle.
 			if(isBackgroundVisible())
@@ -297,15 +286,16 @@ void LLNetMap::draw()
 		S32 center_sw_left = getRect().getWidth() / 2 + llfloor(mCurPan.mV[VX]);
 		S32 center_sw_bottom = getRect().getHeight() / 2 + llfloor(mCurPan.mV[VY]);
 
-		gGL.pushMatrix();
-		gGL.translatef( (F32) center_sw_left, (F32) center_sw_bottom, 0.f);
+		gGL.pushUIMatrix();
+		gGL.translateUI( (F32) center_sw_left, (F32) center_sw_bottom, 0.f);
 
 		static LLCachedControl<bool> rotate_map("MiniMapRotate", true);
 		if (rotate_map)
 		{
 			// Rotate subsequent draws to agent rotation.
 			rotation = atan2( LLViewerCamera::getInstance()->getAtAxis().mV[VX], LLViewerCamera::getInstance()->getAtAxis().mV[VY] );
-			gGL.rotatef( rotation * RAD_TO_DEG, 0.f, 0.f, 1.f);
+			LLQuaternion rot(rotation, LLVector3(0.f, 0.f, 1.f));
+			gGL.rotateUI(rot);
 		}
 
 		// Figure out where agent is.
@@ -351,9 +341,9 @@ void LLNetMap::draw()
 			{
 				const LLViewerRegion::tex_matrix_t& tiles(regionp->getWorldMapTiles());
 
-				for (S32 i(0), scaled_width(real_width/region_width), square_width(scaled_width*scaled_width); i < square_width; ++i)
+				for (S32 i(0), scaled_width((S32)real_width/region_width), square_width(scaled_width*scaled_width); i < square_width; ++i)
 				{
-					const F32 y(i/scaled_width);
+					const F32 y(i / (F32)scaled_width);
 					const F32 x(i - y*scaled_width);
 					const F32 local_left(left + x*mScale);
 					const F32 local_right(local_left + mScale);
@@ -363,15 +353,15 @@ void LLNetMap::draw()
 					if (pRegionImage && pRegionImage->hasGLTexture())
 					{
 						gGL.getTexUnit(0)->bind(pRegionImage);
-						gGL.begin(LLRender::QUADS);
+						gGL.begin(LLRender::TRIANGLE_STRIP);
 							gGL.texCoord2f(0.f, 1.f);
 							gGL.vertex2f(local_left, local_top);
 							gGL.texCoord2f(0.f, 0.f);
 							gGL.vertex2f(local_left, local_bottom);
-							gGL.texCoord2f(1.f, 0.f);
-							gGL.vertex2f(local_right, local_bottom);
 							gGL.texCoord2f(1.f, 1.f);
 							gGL.vertex2f(local_right, local_top);
+							gGL.texCoord2f(1.f, 0.f);
+							gGL.vertex2f(local_right, local_bottom);
 						gGL.end();
 
 						pRegionImage->setBoostLevel(LLViewerTexture::BOOST_MAP_VISIBLE);
@@ -387,15 +377,15 @@ void LLNetMap::draw()
 // [/SL:KB]
 			// Draw using texture.
 			gGL.getTexUnit(0)->bind(regionp->getLand().getSTexture());
-			gGL.begin(LLRender::QUADS);
+			gGL.begin(LLRender::TRIANGLE_STRIP);
 				gGL.texCoord2f(0.f, 1.f);
 				gGL.vertex2f(left, top);
 				gGL.texCoord2f(0.f, 0.f);
 				gGL.vertex2f(left, bottom);
-				gGL.texCoord2f(1.f, 0.f);
-				gGL.vertex2f(right, bottom);
 				gGL.texCoord2f(1.f, 1.f);
 				gGL.vertex2f(right, top);
+				gGL.texCoord2f(1.f, 0.f);
+				gGL.vertex2f(right, bottom);
 			gGL.end();
 
 			// Draw water
@@ -404,15 +394,15 @@ void LLNetMap::draw()
 				if (regionp->getLand().getWaterTexture())
 				{
 					gGL.getTexUnit(0)->bind(regionp->getLand().getWaterTexture());
-					gGL.begin(LLRender::QUADS);
+					gGL.begin(LLRender::TRIANGLE_STRIP);
 						gGL.texCoord2f(0.f, 1.f);
 						gGL.vertex2f(left, top);
 						gGL.texCoord2f(0.f, 0.f);
 						gGL.vertex2f(left, bottom);
-						gGL.texCoord2f(1.f, 0.f);
-						gGL.vertex2f(right, bottom);
 						gGL.texCoord2f(1.f, 1.f);
 						gGL.vertex2f(right, top);
+						gGL.texCoord2f(1.f, 0.f);
+						gGL.vertex2f(right, bottom);
 					gGL.end();
 				}
 			}
@@ -502,15 +492,15 @@ void LLNetMap::draw()
 		{
 			gGL.getTexUnit(0)->bind(mObjectImagep);
 // [/SL:KB]
-		gGL.begin(LLRender::QUADS);
+		gGL.begin(LLRender::TRIANGLE_STRIP);
 			gGL.texCoord2f(0.f, 1.f);
 			gGL.vertex2f(map_center_agent.mV[VX] - image_half_width, image_half_height + map_center_agent.mV[VY]);
 			gGL.texCoord2f(0.f, 0.f);
 			gGL.vertex2f(map_center_agent.mV[VX] - image_half_width, map_center_agent.mV[VY] - image_half_height);
-			gGL.texCoord2f(1.f, 0.f);
-			gGL.vertex2f(image_half_width + map_center_agent.mV[VX], map_center_agent.mV[VY] - image_half_height);
 			gGL.texCoord2f(1.f, 1.f);
 			gGL.vertex2f(image_half_width + map_center_agent.mV[VX], image_half_height + map_center_agent.mV[VY]);
+			gGL.texCoord2f(1.f, 0.f);
+			gGL.vertex2f(image_half_width + map_center_agent.mV[VX], map_center_agent.mV[VY] - image_half_height);
 		gGL.end();
 // [SL:KB] - Patch: World-MinimapOverlay | Checked: 2012-07-26 (Catznip-3.3)
 		}
@@ -524,20 +514,20 @@ void LLNetMap::draw()
 			map_center_agent.mV[VY] *= mScale / region_width;
 
 			gGL.getTexUnit(0)->bind(mParcelImagep);
-			gGL.begin(LLRender::QUADS);
+			gGL.begin(LLRender::TRIANGLE_STRIP);
 				gGL.texCoord2f(0.f, 1.f);
 				gGL.vertex2f(map_center_agent.mV[VX] - image_half_width, image_half_height + map_center_agent.mV[VY]);
 				gGL.texCoord2f(0.f, 0.f);
 				gGL.vertex2f(map_center_agent.mV[VX] - image_half_width, map_center_agent.mV[VY] - image_half_height);
-				gGL.texCoord2f(1.f, 0.f);
-				gGL.vertex2f(image_half_width + map_center_agent.mV[VX], map_center_agent.mV[VY] - image_half_height);
 				gGL.texCoord2f(1.f, 1.f);
 				gGL.vertex2f(image_half_width + map_center_agent.mV[VX], image_half_height + map_center_agent.mV[VY]);
+				gGL.texCoord2f(1.f, 0.f);
+				gGL.vertex2f(image_half_width + map_center_agent.mV[VX], map_center_agent.mV[VY] - image_half_height);
 			gGL.end();
 		}
 // [/SL:KB]
 
-		gGL.popMatrix();
+		gGL.popUIMatrix();
 
 		// Mouse pointer in local coordinates
 		S32 local_mouse_x;
@@ -707,37 +697,29 @@ void LLNetMap::draw()
 
 		gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
 
-		if (rotate_map)
-		{
-			LLColor4 c = map_frustum_color();
+		LLColor4 c = rotate_map ? map_frustum_color() : map_frustum_rotating_color();
 
-			gGL.begin( LLRender::TRIANGLES  );
-				gGL.color4fv(c.mV);
-				gGL.vertex2f( ctr_x, ctr_y );
-				c.mV[VW] *= .1f;
-				gGL.color4fv(c.mV);
-				gGL.vertex2f( ctr_x - half_width_pixels, ctr_y + far_clip_pixels );
-				gGL.vertex2f( ctr_x + half_width_pixels, ctr_y + far_clip_pixels );
-			gGL.end();
-		}
-		else
-		{
-			LLColor4 c = map_frustum_rotating_color();
+		gGL.pushUIMatrix();
 
-			// If we don't rotate the map, we have to rotate the frustum.
-			gGL.pushMatrix();
-				gGL.translatef( ctr_x, ctr_y, 0 );
-				gGL.rotatef( atan2( LLViewerCamera::getInstance()->getAtAxis().mV[VX], LLViewerCamera::getInstance()->getAtAxis().mV[VY] ) * RAD_TO_DEG, 0.f, 0.f, -1.f);
-				gGL.begin( LLRender::TRIANGLES  );
-					gGL.color4fv(c.mV);
-					gGL.vertex2f( 0.f, 0.f );
-					c.mV[VW] *= .1f;
-					gGL.color4fv(c.mV);
-					gGL.vertex2f( -half_width_pixels, far_clip_pixels );
-					gGL.vertex2f(  half_width_pixels, far_clip_pixels );
-				gGL.end();
-			gGL.popMatrix();
+		gGL.translateUI(ctr_x, ctr_y, 0);
+
+		// If we don't rotate the map, we have to rotate the frustum.
+		if (!rotate_map)
+		{
+			LLQuaternion rot(atan2(LLViewerCamera::getInstance()->getAtAxis().mV[VX], LLViewerCamera::getInstance()->getAtAxis().mV[VY]), LLVector3(0.f, 0.f, -1.f));
+			gGL.rotateUI(rot);
 		}
+
+		gGL.begin( LLRender::TRIANGLES  );
+			gGL.color4fv(c.mV);
+			gGL.vertex2f( 0, 0 );
+			c.mV[VW] *= .1f;
+			gGL.color4fv(c.mV);
+			gGL.vertex2f( half_width_pixels, far_clip_pixels );
+			gGL.vertex2f( -half_width_pixels, far_clip_pixels );
+		gGL.end();
+
+		gGL.popUIMatrix();
 
 		// <exodus> Draw mouse radius
 		static const LLCachedControl<LLColor4> map_avatar_rollover_color("ExodusMapRolloverCircleColor");
@@ -746,8 +728,7 @@ void LLNetMap::draw()
 		gl_circle_2d(local_mouse_x, local_mouse_y, min_pick_dist, 32, true);
 		// </exodus>
 	}
-	
-	gGL.popMatrix();
+	;
 	gGL.popUIMatrix();
 
 	// Rotation of 0 means that North is up
@@ -780,9 +761,6 @@ LLVector3 LLNetMap::globalPosToView(const LLVector3d& global_pos)
 	LLVector3 pos_local;
 	pos_local.setVec(relative_pos_global);  // convert to floats from doubles
 
-// <FS:CR> Aurora Sim
-	mPixelsPerMeter = mScale / REGION_WIDTH_METERS;
-// </FS:CR> Aurora Sim
 	pos_local.mV[VX] *= mPixelsPerMeter;
 	pos_local.mV[VY] *= mPixelsPerMeter;
 	// leave Z component in meters
@@ -803,17 +781,12 @@ LLVector3 LLNetMap::globalPosToView(const LLVector3d& global_pos)
 
 void LLNetMap::drawRing(const F32 radius, const LLVector3 pos_map, const LLColor4& color)
 {
-// <FS:CR> Aurora Sim
-	F32 meters_to_pixels = mScale / LLWorld::getInstance()->getRegionWidthInMeters();
-	//F32 meters_to_pixels = mScale / REGION_WIDTH_METERS;
-// </FS:CR> Aurora Sim
-	F32 radius_pixels = radius * meters_to_pixels;
+	F32 radius_pixels = radius * mPixelsPerMeter;
 
-	gGL.matrixMode(LLRender::MM_MODELVIEW);
-	gGL.pushMatrix();
-	gGL.translatef((F32)pos_map.mV[VX], (F32)pos_map.mV[VY], 0.f);
-	gl_ring(radius_pixels, WIDTH_PIXELS, color, color, CIRCLE_STEPS, FALSE);
-	gGL.popMatrix();
+	gGL.pushUIMatrix();
+	gGL.translateUI(pos_map.mV[VX], pos_map.mV[VY], 0.f);
+	gl_washer_2d(radius_pixels, radius_pixels-WIDTH_PIXELS, CIRCLE_STEPS, color, color);
+	gGL.popUIMatrix();
 }
 
 void LLNetMap::drawTracking(const LLVector3d& pos_global, const LLColor4& color,
@@ -1128,7 +1101,7 @@ void LLNetMap::renderPropertyLinesForRegion(const LLViewerRegion* pRegion, const
 	// Draw the north and east region borders
 	//
 	const F32 real_width(pRegion->getWidth());
-const S32 borderY = originY + ll_round(real_width * mObjectMapTPM);
+	const S32 borderY = originY + ll_round(real_width * mObjectMapTPM);
 	if ( (borderY >= 0) && (borderY < imgHeight) )
 	{
 		S32 curX = llclamp(originX, 0, imgWidth), endX = llclamp(originX + ll_round(real_width * mObjectMapTPM), 0, imgWidth - 1);
@@ -1146,8 +1119,8 @@ const S32 borderY = originY + ll_round(real_width * mObjectMapTPM);
 	//
 	// Render parcel lines
 	//
-	static const F32 GRID_STEP = PARCEL_GRID_STEP_METERS;
-	static const S32 GRIDS_PER_EDGE = real_width / GRID_STEP;
+	const F32 GRID_STEP = PARCEL_GRID_STEP_METERS;
+	const S32 GRIDS_PER_EDGE = real_width / GRID_STEP;
 
 	const U8* pOwnership = pRegion->getParcelOverlay()->getOwnership();
 	const U8* pCollision = (pRegion->getHandle() == LLViewerParcelMgr::instance().getCollisionRegionHandle()) ? LLViewerParcelMgr::instance().getCollisionBitmap() : NULL;

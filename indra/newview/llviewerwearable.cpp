@@ -137,7 +137,7 @@ LLWearable::EImportResult LLViewerWearable::importStream( std::istream& input_st
 	return result;
 }
 
-AIArchetype LLViewerWearable::getArchetype(void) const
+AIArchetype LLViewerWearable::getArchetype() const
 {
 	AIArchetype archetype(this);
 	for (visual_param_index_map_t::const_iterator iter = mVisualParamIndexMap.begin(); iter != mVisualParamIndexMap.end(); ++iter)
@@ -333,11 +333,8 @@ const LLUUID LLViewerWearable::getDefaultTextureImageID(ETextureIndex index) con
 //virtual
 void LLViewerWearable::writeToAvatar(LLAvatarAppearance *avatarp)
 {
-	LLVOAvatarSelf* viewer_avatar = dynamic_cast<LLVOAvatarSelf*>(avatarp);
-
-	if (!avatarp || !viewer_avatar) return;
-
-	if (!viewer_avatar->isValid()) return;
+	if (!avatarp || !avatarp->isSelf() || !avatarp->isValid()) return;
+	LLVOAvatarSelf* viewer_avatar = static_cast<LLVOAvatarSelf*>(avatarp);
 
 #if 0
 	// FIXME DRANO - kludgy way to avoid overwriting avatar state from wearables.
@@ -369,7 +366,7 @@ void LLViewerWearable::writeToAvatar(LLAvatarAppearance *avatarp)
 			{	
 				image_id = getDefaultTextureImageID((ETextureIndex) te);
 			}
-			LLViewerTexture* image = LLViewerTextureManager::getFetchedTexture( image_id, TRUE, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE );
+			LLViewerTexture* image = LLViewerTextureManager::getFetchedTexture( image_id, FTT_DEFAULT, TRUE, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE );
 			// MULTI-WEARABLE: assume index 0 will be used when writing to avatar. TODO: eliminate the need for this.
 			viewer_avatar->setLocalTextureTE(te, image, 0);
 		}
@@ -600,18 +597,7 @@ void LLViewerWearable::saveNewAsset() const
 	//LL_INFOS() << *this << LL_ENDL;
 
 	const std::string filename = asset_id_to_filename(mAssetID);
-	LLFILE* fp = LLFile::fopen(filename, "wb");		/* Flawfinder: ignore */
-	BOOL successful_save = FALSE;
-	if(fp && exportFile(fp))
-	{
-		successful_save = TRUE;
-	}
-	if(fp)
-	{
-		fclose(fp);
-		fp = NULL;
-	}
-	if(!successful_save)
+	if(! exportFile(filename))
 	{
 		std::string buffer = llformat("Unable to save '%s' to wearable file.", mName.c_str());
 		LL_WARNS() << buffer << LL_ENDL;

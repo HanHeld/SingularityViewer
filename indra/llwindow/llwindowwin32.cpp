@@ -42,6 +42,7 @@
 #include "llgl.h"
 #include "llstring.h"
 #include "lldir.h"
+#include "llsdutil.h"
 #include "llglslshader.h"
 
 // System includes
@@ -52,6 +53,7 @@
 #include <shellapi.h>
 #include <fstream>
 #include <Imm.h>
+#include <ShellScalingAPI.h>
 
 // Require DirectInput version 8
 #define DIRECTINPUT_VERSION 0x0800
@@ -72,6 +74,27 @@ const S32	MAX_NUM_RESOLUTIONS = 32;
 const F32	ICON_FLASH_TIME = 0.5f;
 
 extern BOOL gDebugWindowProc;
+
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
+#ifndef DPI_ENUMS_DECLARED
+
+typedef enum PROCESS_DPI_AWARENESS {
+	PROCESS_DPI_UNAWARE = 0,
+	PROCESS_SYSTEM_DPI_AWARE = 1,
+	PROCESS_PER_MONITOR_DPI_AWARE = 2
+} PROCESS_DPI_AWARENESS;
+
+typedef enum MONITOR_DPI_TYPE {
+	MDT_EFFECTIVE_DPI = 0,
+	MDT_ANGULAR_DPI = 1,
+	MDT_RAW_DPI = 2,
+	MDT_DEFAULT = MDT_EFFECTIVE_DPI
+} MONITOR_DPI_TYPE;
+
+#endif
 
 LPWSTR gIconResource = IDI_APPLICATION;
 
@@ -394,8 +417,14 @@ LLWindowWin32::LLWindowWin32(LLWindowCallbacks* callbacks,
 	mKeyVirtualKey = 0;
 	mhDC = NULL;
 	mhRC = NULL;
+	mUser32Lib = nullptr;
+	mSHCoreLib = nullptr;
 
 	LL_INFOS() << "Desired FSAA Samples = " << mFSAASamples << LL_ENDL;
+
+	memset(mCurrentGammaRamp, 0, sizeof(mCurrentGammaRamp));
+	memset(mPrevGammaRamp, 0, sizeof(mPrevGammaRamp));
+	mCustomGammaSet = FALSE;
 
 	// Initialize the keyboard
 	gKeyboard = new LLKeyboardWin32();
@@ -646,6 +675,9 @@ LLWindowWin32::LLWindowWin32(LLWindowCallbacks* callbacks,
 	LLCoordScreen windowPos(x,y);
 	LLCoordScreen windowSize(window_rect.right - window_rect.left,
 							 window_rect.bottom - window_rect.top);
+
+	initDPIAwareness();
+
 	if (!switchContext(mFullscreen, windowSize, vsync_mode, &windowPos))
 	{
 		return;
@@ -673,11 +705,22 @@ LLWindowWin32::~LLWindowWin32()
 
 	delete [] mWindowClassName;
 	mWindowClassName = NULL;
+
+	FreeLibrary(mUser32Lib);
+	FreeLibrary(mSHCoreLib);
 }
 
-void LLWindowWin32::show()
+void LLWindowWin32::postInitialized()
+{
+	float xDPIScale, yDPIScale;
+	getDPIScales(xDPIScale, yDPIScale);
+	mCallbacks->handleDPIScaleChange(this, xDPIScale, yDPIScale);
+}
+
+void LLWindowWin32::show(bool take_focus)
 {
 	ShowWindow(mWindowHandle, SW_SHOW);
+	if (!take_focus) return;
 	SetForegroundWindow(mWindowHandle);
 	SetFocus(mWindowHandle);
 }
@@ -1575,6 +1618,7 @@ BOOL LLWindowWin32::switchContext(BOOL fullscreen, const LLCoordScreen &size, co
 	{
 		show();
 		glClearColor(0.0f, 0.0f, 0.0f, 0.f);
+		gGL.syncContextState();
 		glClear(GL_COLOR_BUFFER_BIT);
 		swapBuffers();
 	}
@@ -1773,7 +1817,50 @@ void LLWindowWin32::initCursors()
 	}
 }
 
+void LLWindowWin32::initDPIAwareness()
+{
+	mUser32Lib = LoadLibrary(L"user32.dll");
+	mSHCoreLib = LoadLibrary(L"Shcore.dll");
+	
+	if (mUser32Lib && mSHCoreLib)
+	{
+		MonitorFromWindowFn = reinterpret_cast<decltype(MonitorFromWindowFn)>(GetProcAddress(mUser32Lib, "MonitorFromWindow"));
+		GetDpiForMonitorFn = reinterpret_cast<decltype(GetDpiForMonitorFn)>(GetProcAddress(mSHCoreLib, "GetDpiForMonitor"));
 
+		if (MonitorFromWindowFn && GetDpiForMonitorFn)
+		{
+			HRESULT(WINAPI* SetProcessDpiAwareness)(PROCESS_DPI_AWARENESS);
+			SetProcessDpiAwareness = reinterpret_cast<decltype(SetProcessDpiAwareness)>(GetProcAddress(mSHCoreLib, "SetProcessDpiAwareness"));
+			if (SetProcessDpiAwareness && SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE) == S_OK)
+				return;
+
+			BOOL(WINAPI* SetProcessDPIAware)(void);
+			SetProcessDPIAware = reinterpret_cast<decltype(SetProcessDPIAware)>(GetProcAddress(mUser32Lib, "SetProcessDPIAware"));
+			if (SetProcessDPIAware && SetProcessDPIAware())
+				return;
+		}
+	}
+
+	FreeLibrary(mUser32Lib);
+	FreeLibrary(mSHCoreLib);
+	mUser32Lib = nullptr;
+	mSHCoreLib = nullptr;
+}
+
+void LLWindowWin32::getDPIScales(float &xDPIScale, float& yDPIScale)
+{
+	xDPIScale = yDPIScale = 1.f;
+	if (mUser32Lib)
+	{
+		uint32_t xDPI, yDPI;
+		auto window = MonitorFromWindowFn(mWindowHandle, MONITOR_DEFAULTTONEAREST);
+		if (GetDpiForMonitorFn(window, MDT_EFFECTIVE_DPI, &xDPI, &yDPI) == S_OK)
+		{
+			xDPIScale = (float)xDPI / (float)USER_DEFAULT_SCREEN_DPI;
+			yDPIScale = (float)yDPI / (float)USER_DEFAULT_SCREEN_DPI;
+		}
+	}
+}
 
 void LLWindowWin32::updateCursor()
 {
@@ -1873,8 +1960,8 @@ void LLWindowWin32::gatherInput()
 	mMousePositionModified = FALSE;
 }
 
-static LLFastTimer::DeclareTimer FTM_KEYHANDLER("Handle Keyboard");
-static LLFastTimer::DeclareTimer FTM_MOUSEHANDLER("Handle Mouse");
+static LLTrace::BlockTimerStatHandle FTM_KEYHANDLER("Handle Keyboard");
+static LLTrace::BlockTimerStatHandle FTM_MOUSEHANDLER("Handle Mouse");
 
 LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_param, LPARAM l_param)
 {
@@ -2105,6 +2192,9 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 			window_imp->mKeyCharCode = 0; // don't know until wm_char comes in next
 			window_imp->mKeyScanCode = ( l_param >> 16 ) & 0xff;
 			window_imp->mKeyVirtualKey = w_param;
+			window_imp->mRawMsg = u_msg;
+			window_imp->mRawWParam = w_param;
+			window_imp->mRawLParam = l_param;
 
 			window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_KEYDOWN");
 			{
@@ -2127,9 +2217,12 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 		{
 			window_imp->mKeyScanCode = ( l_param >> 16 ) & 0xff;
 			window_imp->mKeyVirtualKey = w_param;
+			window_imp->mRawMsg = u_msg;
+			window_imp->mRawWParam = w_param;
+			window_imp->mRawLParam = l_param;
 
 			window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_KEYUP");
-			LLFastTimer t2(FTM_KEYHANDLER);
+			LL_RECORD_BLOCK_TIME(FTM_KEYHANDLER);
 
 			if (gDebugWindowProc)
 			{
@@ -2214,6 +2307,9 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 
 		case WM_CHAR:
 			window_imp->mKeyCharCode = w_param;
+			window_imp->mRawMsg = u_msg;
+			window_imp->mRawWParam = w_param;
+			window_imp->mRawLParam = l_param;
 
 			// Should really use WM_UNICHAR eventually, but it requires a specific Windows version and I need
 			// to figure out how that works. - Doug
@@ -2249,7 +2345,7 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 		case WM_LBUTTONDOWN:
 			{
 				window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_LBUTTONDOWN");
-				LLFastTimer t2(FTM_MOUSEHANDLER);
+				LL_RECORD_BLOCK_TIME(FTM_MOUSEHANDLER);
 				sHandleLeftMouseUp = true;
 
 				if (LLWinImm::isAvailable() && window_imp->mPreeditor)
@@ -2322,7 +2418,7 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 		case WM_LBUTTONUP:
 			{
 				window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_LBUTTONUP");
-				LLFastTimer t2(FTM_MOUSEHANDLER);
+				LL_RECORD_BLOCK_TIME(FTM_MOUSEHANDLER);
 
 				if (!sHandleLeftMouseUp)
 				{
@@ -2363,7 +2459,7 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 		case WM_RBUTTONDOWN:
 			{
 				window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_RBUTTONDOWN");
-				LLFastTimer t2(FTM_MOUSEHANDLER);
+				LL_RECORD_BLOCK_TIME(FTM_MOUSEHANDLER);
 				if (LLWinImm::isAvailable() && window_imp->mPreeditor)
 				{
 					window_imp->interruptLanguageTextInput();
@@ -2397,7 +2493,7 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 		case WM_RBUTTONUP:
 			{
 				window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_RBUTTONUP");
-				LLFastTimer t2(FTM_MOUSEHANDLER);
+				LL_RECORD_BLOCK_TIME(FTM_MOUSEHANDLER);
 				// Because we move the cursor position in the app, we need to query
 				// to find out where the cursor at the time the event is handled.
 				// If we don't do this, many clicks could get buffered up, and if the
@@ -2427,7 +2523,7 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 //		case WM_MBUTTONDBLCLK:
 			{
 				window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_MBUTTONDOWN");
-				LLFastTimer t2(FTM_MOUSEHANDLER);
+				LL_RECORD_BLOCK_TIME(FTM_MOUSEHANDLER);
 				if (LLWinImm::isAvailable() && window_imp->mPreeditor)
 				{
 					window_imp->interruptLanguageTextInput();
@@ -2461,7 +2557,7 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 		case WM_MBUTTONUP:
 			{
 				window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_MBUTTONUP");
-				LLFastTimer t2(FTM_MOUSEHANDLER);
+				LL_RECORD_BLOCK_TIME(FTM_MOUSEHANDLER);
 				// Because we move the cursor position in the llviewer app, we need to query
 				// to find out where the cursor at the time the event is handled.
 				// If we don't do this, many clicks could get buffered up, and if the
@@ -2646,6 +2742,26 @@ LRESULT CALLBACK LLWindowWin32::mainWindowProc(HWND h_wnd, UINT u_msg, WPARAM w_
 				window_imp->mCallbacks->handleDataCopy(window_imp, myCDS->dwData, myCDS->lpData);
 			};
 			return 0;			
+
+		case WM_DPICHANGED:
+			{
+				window_imp->mCallbacks->handlePingWatchdog(window_imp, "Main:WM_DPICHANGED");
+				if (gDebugWindowProc)
+				{
+					LL_INFOS("Window") << "WM_DPICHANGED  " << LOWORD(w_param) << " " << HIWORD(w_param) << LL_ENDL;
+				}
+				LPRECT rect = (LPRECT)l_param;
+				S32 width = ((LPRECT)l_param)->right - ((LPRECT)l_param)->left;
+				S32 height = ((LPRECT)l_param)->bottom - ((LPRECT)l_param)->top;
+				LL_INFOS() << "rect: " << width << "x" << height << LL_ENDL;
+				if(window_imp->mCallbacks->handleDPIScaleChange(window_imp, 
+					(F32)LOWORD(w_param) / (F32)USER_DEFAULT_SCREEN_DPI,
+					(F32)HIWORD(w_param) / (F32)USER_DEFAULT_SCREEN_DPI,
+					width,
+					height))
+					SetWindowPos(h_wnd, HWND_TOP, rect->left, rect->top, rect->right - rect->left, rect->bottom - rect->top, SWP_NOZORDER | SWP_NOACTIVATE);
+			}
+			return 0;
 
 			break;
 		}
@@ -2910,12 +3026,25 @@ F32 LLWindowWin32::getGamma()
 
 BOOL LLWindowWin32::restoreGamma()
 {
-	return SetDeviceGammaRamp(mhDC, mPrevGammaRamp);
+	if (mCustomGammaSet != FALSE)
+	{
+		mCustomGammaSet = FALSE;
+		return SetDeviceGammaRamp(mhDC, mPrevGammaRamp);
+	}
+	return TRUE;
 }
 
 BOOL LLWindowWin32::setGamma(const F32 gamma)
 {
 	mCurrentGamma = gamma;
+
+	//Get the previous gamma ramp to restore later.
+	if (mCustomGammaSet == FALSE)
+	{
+		if (GetDeviceGammaRamp(mhDC, mPrevGammaRamp) == FALSE)
+			return FALSE;
+		mCustomGammaSet = TRUE;
+	}
 
 	LL_DEBUGS("Window") << "Setting gamma to " << gamma << LL_ENDL;
 
@@ -2928,9 +3057,9 @@ BOOL LLWindowWin32::setGamma(const F32 gamma)
 		if ( value > 0xffff )
 			value = 0xffff;
 
-		mCurrentGammaRamp [ 0 * 256 + i ] = 
-			mCurrentGammaRamp [ 1 * 256 + i ] = 
-				mCurrentGammaRamp [ 2 * 256 + i ] = ( WORD )value;
+		mCurrentGammaRamp[0][i] =
+			mCurrentGammaRamp[1][i] =
+				mCurrentGammaRamp[2][i] = (WORD) value;
 	};
 
 	return SetDeviceGammaRamp ( mhDC, mCurrentGammaRamp );
@@ -3310,6 +3439,9 @@ LLSD LLWindowWin32::getNativeKeyData()
 
 	result["scan_code"] = (S32)mKeyScanCode;
 	result["virtual_key"] = (S32)mKeyVirtualKey;
+	result["msg"] = ll_sd_from_U32(mRawMsg);
+	result["w_param"] = ll_sd_from_U32(mRawWParam);
+	result["l_param"] = ll_sd_from_U32(mRawLParam);
 
 	return result;
 }

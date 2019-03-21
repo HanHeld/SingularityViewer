@@ -129,7 +129,7 @@ void LLFloaterScriptDebug::addScriptLine(const std::string &utf8mesg, const std:
 
 	if (objectp)
 	{
-		objectp->setIcon(LLViewerTextureManager::getFetchedTextureFromFile("script_error.j2c", TRUE, LLGLTexture::BOOST_UI));
+		objectp->setIcon(LLViewerTextureManager::getFetchedTextureFromFile("script_error.j2c", FTT_LOCAL_FILE, TRUE, LLGLTexture::BOOST_UI));
 		floater_label = llformat("%s(%.2f, %.2f)", user_name.c_str(), objectp->getPositionRegion().mV[VX], objectp->getPositionRegion().mV[VY]);
 	}
 	else
@@ -162,7 +162,8 @@ LLFloaterScriptDebugOutput::LLFloaterScriptDebugOutput()
 }
 
 LLFloaterScriptDebugOutput::LLFloaterScriptDebugOutput(const LLUUID& object_id)
-: LLFloater(std::string("script instance floater"), LLRect(0, 200, 200, 0), std::string("Script"), TRUE), mObjectID(object_id)
+: LLFloater(std::string("script instance floater"), LLRect(0, 200, 200, 0), std::string("Script"), TRUE), mObjectID(object_id),
+	mHistoryEditor(nullptr)
 {
 	S32 y = getRect().getHeight() - LLFLOATER_HEADER_SIZE - LLFLOATER_VPAD;
 	S32 x = LLFLOATER_HPAD;

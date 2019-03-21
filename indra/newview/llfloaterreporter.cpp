@@ -74,7 +74,7 @@
 #include "llfloateravatarpicker.h"
 #include "lldir.h"
 #include "llselectmgr.h"
-#include "sgversion.h"
+#include "llversioninfo.h"
 #include "lluictrlfactory.h"
 #include "llviewernetwork.h"
 
@@ -111,17 +111,6 @@ LLFloaterReporter::LLFloaterReporter()
 	LLUICtrlFactory::getInstance()->buildFloater(this, "floater_report_abuse.xml");
 }
 
-// static
-void LLFloaterReporter::processRegionInfo(LLMessageSystem* msg)
-{
-	U32 region_flags;
-	msg->getU32("RegionInfo", "RegionFlags", region_flags);
-
-	if (LLFloaterReporter::instanceExists() && LLFloaterReporter::getInstance()->getVisible())
-	{
-		LLNotificationsUtil::add("HelpReportAbuseEmailLL");
-	}
-}
 // virtual
 BOOL LLFloaterReporter::postBuild()
 {
@@ -155,6 +144,7 @@ BOOL LLFloaterReporter::postBuild()
 
 	mDefaultSummary = getChild<LLUICtrl>("details_edit")->getValue().asString();
 
+	/* Singu Note: We only used this to trigger the notification that's now below, there's no point to this anymore.
 	// send a message and ask for information about this region -
 	// result comes back in processRegionInfo(..)
 	LLMessageSystem* msg = gMessageSystem;
@@ -163,6 +153,8 @@ BOOL LLFloaterReporter::postBuild()
 	msg->addUUID("AgentID", gAgent.getID());
 	msg->addUUID("SessionID", gAgent.getSessionID());
 	gAgent.sendReliableMessage();
+	*/
+	LLNotificationsUtil::add("HelpReportAbuseEmailLL");
 
 
 	// abuser name is selected from a list
@@ -181,7 +173,7 @@ BOOL LLFloaterReporter::postBuild()
 	childSetAction("cancel_btn", onClickCancel, this);
 	// grab the user's name
 	std::string reporter;
-	gAgent.buildFullname(reporter);
+	LLAgentUI::buildFullname(reporter);
 	getChild<LLUICtrl>("reporter_field")->setValue(reporter);
 
 	center();
@@ -215,15 +207,12 @@ LLFloaterReporter::~LLFloaterReporter()
 // virtual
 void LLFloaterReporter::draw()
 {
-	getChildView("screen_check")->setEnabled(TRUE );
-
 	LLFloater::draw();
 }
 
 void LLFloaterReporter::enableControls(BOOL enable)
 {
 	getChildView("category_combo")->setEnabled(enable);
-	getChildView("screen_check")->setEnabled(enable);
 	getChildView("screenshot")->setEnabled(false);
 	getChildView("pick_btn")->setEnabled(enable);
 	getChildView("summary_edit")->setEnabled(enable);
@@ -391,19 +380,10 @@ void LLFloaterReporter::onClickSend(void *userdata)
 		}
 		else
 		{
-			if(self->getChild<LLUICtrl>("screen_check")->getValue())
-			{
-				self->getChildView("send_btn")->setEnabled(FALSE);
-				self->getChildView("cancel_btn")->setEnabled(FALSE);
-				// the callback from uploading the image calls sendReportViaLegacy()
-				self->uploadImage();
-			}
-			else
-			{
-				self->sendReportViaLegacy(self->gatherReport());
-				LLUploadDialog::modalUploadFinished();
-				self->close();
-			}
+			self->getChildView("send_btn")->setEnabled(FALSE);
+			self->getChildView("cancel_btn")->setEnabled(FALSE);
+			// the callback from uploading the image calls sendReportViaLegacy()
+			self->uploadImage();
 		}
 	}
 }
@@ -624,10 +604,7 @@ LLSD LLFloaterReporter::gatherReport()
 
 	std::ostringstream details;
 
-	details << "V" << gVersionMajor << "."	// client version moved to body of email for abuse reports
-		<< gVersionMinor << "."
-		<< gVersionPatch << "."
-		<< gVersionBuild << std::endl << std::endl;
+	details << "V" << LLVersionInfo::getVersion() << std::endl;	// client version moved to body of email for abuse reports
 
 	std::string object_name = getChild<LLUICtrl>("object_name")->getValue().asString();
 	if (!object_name.empty() && !mOwnerName.empty())
@@ -644,29 +621,19 @@ LLSD LLFloaterReporter::gatherReport()
 
 	std::string version_string;
 	version_string = llformat(
-			"%d.%d.%d %s %s %s %s",
-			gVersionMajor,
-			gVersionMinor,
-			gVersionPatch,
+			"%s %s %s %s %s",
+			LLVersionInfo::getShortVersion().c_str(),
 			platform,
 			gSysCPU.getFamily().c_str(),
 			gGLManager.mGLRenderer.c_str(),
 			gGLManager.mDriverVersionVendorString.c_str());
-
-	// only send a screenshot ID if we're asked to and the email is 
-	// going to LL - Estate Owners cannot see the screenshot asset
-	LLUUID screenshot_id = LLUUID::null;
-	if (getChild<LLUICtrl>("screen_check")->getValue())
-	{
-		screenshot_id = getChild<LLUICtrl>("screenshot")->getValue();
-	}
 
 	LLSD report = LLSD::emptyMap();
 	report["report-type"] = (U8) mReportType;
 	report["category"] = getChild<LLUICtrl>("category_combo")->getValue();
 	report["position"] = mPosition.getValue();
 	report["check-flags"] = (U8)0; // this is not used
-	report["screenshot-id"] = screenshot_id;
+	report["screenshot-id"] = getChild<LLUICtrl>("screenshot")->getValue();
 	report["object-id"] = mObjectID;
 	report["abuser-id"] = mAbuserID;
 	report["abuse-region-name"] = "";
@@ -750,7 +717,7 @@ private:
 
 void LLFloaterReporter::sendReportViaCaps(std::string url, std::string sshot_url, const LLSD& report)
 {
-	if(getChild<LLUICtrl>("screen_check")->getValue().asBoolean() && !sshot_url.empty())
+	if(!sshot_url.empty())
 	{
 		// try to upload screenshot
 		LLHTTPClient::post(sshot_url, report, new LLUserReportScreenshotResponder(report, 
@@ -807,8 +774,8 @@ void LLFloaterReporter::takeScreenshot()
 
 	// store in the image list so it doesn't try to fetch from the server
 	LLPointer<LLViewerFetchedTexture> image_in_list = 
-		LLViewerTextureManager::getFetchedTexture(mResourceDatap->mAssetInfo.mUuid, TRUE, LLGLTexture::BOOST_NONE, LLViewerTexture::FETCHED_TEXTURE);
-	image_in_list->createGLTexture(0, raw, 0, TRUE, LLViewerTexture::OTHER);
+		LLViewerTextureManager::getFetchedTexture(mResourceDatap->mAssetInfo.mUuid, FTT_LOCAL_FILE, TRUE, LLGLTexture::BOOST_NONE, LLViewerTexture::FETCHED_TEXTURE);
+	image_in_list->createGLTexture(0, raw, nullptr, TRUE, LLViewerTexture::OTHER);
 
 	// the texture picker then uses that texture
 	LLTexturePicker* texture = getChild<LLTextureCtrl>("screenshot");

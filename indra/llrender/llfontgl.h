@@ -30,7 +30,7 @@
 
 #include "llcoord.h"
 #include "llfontregistry.h"
-#include "lltexture.h"
+#include "llimagegl.h"
 #include "llpointer.h"
 #include "llrect.h"
 #include "v2math.h"
@@ -152,7 +152,7 @@ public:
 	void	   addEmbeddedChar( llwchar wc, LLTexture* image, const LLWString& label) const;
 	void	   removeEmbeddedChar( llwchar wc ) const;
 
-	static void initClass(F32 screen_dpi, F32 x_scale, F32 y_scale,	 const std::string& app_dir, const std::vector<std::string>& xui_paths,	 bool create_gl_textures = true);
+	static void initClass(F32 screen_dpi, F32 x_scale, F32 y_scale,	 const std::string& app_dir, bool create_gl_textures = true);
 
 	// Load sans-serif, sans-serif-small, etc.
 	// Slow, requires multiple seconds to load fonts.
@@ -206,7 +206,8 @@ public:
 	static F32			sCurDepth;
 	static std::vector<std::pair<LLCoordGL, F32> > sOriginStack;
 
-	static LLColor4 sShadowColor;
+	// Singu Note: LLColor4U to avoid converting from LLColor4 to LLColor4U for every glyph(batch).
+	static LLColor4U sShadowColor;
 
 	static F32 sVertDPI;
 	static F32 sHorizDPI;

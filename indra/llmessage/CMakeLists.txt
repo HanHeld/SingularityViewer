@@ -37,7 +37,6 @@ set(llmessage_SOURCE_FILES
     llassetstorage.cpp
     llavatarname.cpp
     llavatarnamecache.cpp
-    llblowfishcipher.cpp
     llbuffer.cpp
     llbufferstream.cpp
     llcachename.cpp
@@ -57,7 +56,6 @@ set(llmessage_SOURCE_FILES
     lliopipe.cpp
     lliosocket.cpp
     llioutil.cpp
-    llmail.cpp
     llmessagebuilder.cpp
     llmessageconfig.cpp
     llmessagelog.cpp
@@ -128,7 +126,6 @@ set(llmessage_HEADER_FILES
     llassetstorage.h
     llavatarname.h
     llavatarnamecache.h
-    llblowfishcipher.h
     llbuffer.h
     llbufferstream.h
     llcachename.h
@@ -156,7 +153,6 @@ set(llmessage_HEADER_FILES
     lliosocket.h
     llioutil.h
     llloginflags.h
-    llmail.h
     llmessagebuilder.h
     llmessageconfig.h
     llmessagelog.h
@@ -220,11 +216,12 @@ set_source_files_properties(${llmessage_HEADER_FILES}
 list(APPEND llmessage_SOURCE_FILES ${llmessage_HEADER_FILES})
 
 add_library (llmessage ${llmessage_SOURCE_FILES})
-add_dependencies(llmessage prepare)
+
 target_link_libraries(
   llmessage
   ${CURL_LIBRARIES}
   ${CARES_LIBRARIES}
+  ${CRYPTO_LIBRARIES}
   ${OPENSSL_LIBRARIES}
   ${CRYPTO_LIBRARIES}
   ${XMLRPCEPI_LIBRARIES}

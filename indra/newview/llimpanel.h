@@ -141,6 +141,11 @@ public:
 	bool getSessionInitialized() const { return mSessionInitialized; }
 	bool mStartCallOnInitialize;
 
+protected:
+	friend class LLViewerObjectList;
+	void addDynamicFocus();
+	void removeDynamicFocus();
+
 private:
 	// Called by UI methods.
 	void onSendMsg();
@@ -159,6 +164,11 @@ private:
 
 	// test if local agent can add agents.
 	bool isInviteAllowed() const;
+
+	void onAddButtonClicked();
+	void addSessionParticipants(const uuid_vec_t& uuids);
+	void addP2PSessionParticipants(const LLSD& notification, const LLSD& response, const uuid_vec_t& uuids);
+	bool canAddSelectedToChat(const uuid_vec_t& uuids) const;
 
 	// Called whenever the user starts or stops typing.
 	// Sends the typing state to the other user if necessary.

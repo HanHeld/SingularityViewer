@@ -552,13 +552,12 @@ void LLSnapshotLivePreview::drawPreviewRect(S32 offset_x, S32 offset_y)
 				   alpha_color, TRUE);
 	}
 	// Draw border around captured part.
-	F32 line_width; 
-	glGetFloatv(GL_LINE_WIDTH, &line_width);
-	glLineWidth(2.0f * line_width);
+	F32 line_width = gGL.getLineWidth();
+	gGL.setLineWidth(2.0f * line_width);
 	gl_rect_2d( mThumbnailPreviewRect.mLeft  + offset_x, mThumbnailPreviewRect.mTop    + offset_y,
 				mThumbnailPreviewRect.mRight + offset_x, mThumbnailPreviewRect.mBottom + offset_y,
 				LLColor4::black, FALSE);
-	glLineWidth(line_width);
+	gGL.setLineWidth(line_width);
 }
 
 //called when the frame is frozen.
@@ -583,7 +582,7 @@ void LLSnapshotLivePreview::draw()
 		gGL.pushMatrix();
 		{
 			gGL.translatef((F32)rect.mLeft, (F32)rect.mBottom, 0.f);
-			gGL.begin(LLRender::QUADS);
+			gGL.begin(LLRender::TRIANGLE_STRIP);
 			{
 				gGL.texCoord2f(uv_width, uv_height);
 				gGL.vertex2i(rect.getWidth(), rect.getHeight() );
@@ -591,11 +590,11 @@ void LLSnapshotLivePreview::draw()
 				gGL.texCoord2f(0.f, uv_height);
 				gGL.vertex2i(0, rect.getHeight() );
 
-				gGL.texCoord2f(0.f, 0.f);
-				gGL.vertex2i(0, 0);
-
 				gGL.texCoord2f(uv_width, 0.f);
 				gGL.vertex2i(rect.getWidth(), 0);
+
+				gGL.texCoord2f(0.f, 0.f);
+				gGL.vertex2i(0, 0);
 			}
 			gGL.end();
 		}
@@ -607,7 +606,7 @@ void LLSnapshotLivePreview::draw()
 		{
 			if (mFlashAlpha < 1.f)
 			{
-				mFlashAlpha = lerp(mFlashAlpha, 1.f, LLCriticalDamp::getInterpolant(0.02f));
+				mFlashAlpha = lerp(mFlashAlpha, 1.f, LLSmoothInterpolation::getInterpolant(0.02f));
 			}
 			else
 			{
@@ -616,7 +615,7 @@ void LLSnapshotLivePreview::draw()
 		}
 		else
 		{
-			mFlashAlpha = lerp(mFlashAlpha, 0.f, LLCriticalDamp::getInterpolant(0.15f));
+			mFlashAlpha = lerp(mFlashAlpha, 0.f, LLSmoothInterpolation::getInterpolant(0.15f));
 		}
 
 		if (mShineCountdown > 0)
@@ -646,18 +645,18 @@ void LLSnapshotLivePreview::draw()
 				S32 y2 = gViewerWindow->getWindowHeightScaled();
 
 				gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-				gGL.begin(LLRender::QUADS);
+				gGL.begin(LLRender::TRIANGLE_STRIP);
 				{
 					gGL.color4f(1.f, 1.f, 1.f, 0.f);
-					gGL.vertex2i(x1, y1);
 					gGL.vertex2i(x1 + gViewerWindow->getWindowWidthScaled(), y2);
+					gGL.vertex2i(x1, y1);
 					gGL.color4f(1.f, 1.f, 1.f, SHINE_OPACITY);
 					gGL.vertex2i(x2 + gViewerWindow->getWindowWidthScaled(), y2);
 					gGL.vertex2i(x2, y1);
 
 					gGL.color4f(1.f, 1.f, 1.f, SHINE_OPACITY);
-					gGL.vertex2i(x2, y1);
 					gGL.vertex2i(x2 + gViewerWindow->getWindowWidthScaled(), y2);
+					gGL.vertex2i(x2, y1);
 					gGL.color4f(1.f, 1.f, 1.f, 0.f);
 					gGL.vertex2i(x3 + gViewerWindow->getWindowWidthScaled(), y2);
 					gGL.vertex2i(x3, y1);
@@ -678,27 +677,18 @@ void LLSnapshotLivePreview::draw()
 		gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
 		gGL.color4f(1.f, 1.f, 1.f, 1.f);
 		LLRect outline_rect = mFullScreenImageRect;
-		gGL.begin(LLRender::QUADS);
+		gGL.begin(LLRender::TRIANGLE_STRIP);
 		{
 			gGL.vertex2i(outline_rect.mLeft - BORDER_WIDTH, outline_rect.mTop + BORDER_WIDTH);
+			gGL.vertex2i(outline_rect.mLeft, outline_rect.mTop);
 			gGL.vertex2i(outline_rect.mRight + BORDER_WIDTH, outline_rect.mTop + BORDER_WIDTH);
 			gGL.vertex2i(outline_rect.mRight, outline_rect.mTop);
-			gGL.vertex2i(outline_rect.mLeft, outline_rect.mTop);
-
-			gGL.vertex2i(outline_rect.mLeft, outline_rect.mBottom);
-			gGL.vertex2i(outline_rect.mRight, outline_rect.mBottom);
 			gGL.vertex2i(outline_rect.mRight + BORDER_WIDTH, outline_rect.mBottom - BORDER_WIDTH);
+			gGL.vertex2i(outline_rect.mRight, outline_rect.mBottom);
 			gGL.vertex2i(outline_rect.mLeft - BORDER_WIDTH, outline_rect.mBottom - BORDER_WIDTH);
-
-			gGL.vertex2i(outline_rect.mLeft, outline_rect.mTop);
 			gGL.vertex2i(outline_rect.mLeft, outline_rect.mBottom);
-			gGL.vertex2i(outline_rect.mLeft - BORDER_WIDTH, outline_rect.mBottom - BORDER_WIDTH);
 			gGL.vertex2i(outline_rect.mLeft - BORDER_WIDTH, outline_rect.mTop + BORDER_WIDTH);
-
-			gGL.vertex2i(outline_rect.mRight, outline_rect.mBottom);
-			gGL.vertex2i(outline_rect.mRight, outline_rect.mTop);
-			gGL.vertex2i(outline_rect.mRight + BORDER_WIDTH, outline_rect.mTop + BORDER_WIDTH);
-			gGL.vertex2i(outline_rect.mRight + BORDER_WIDTH, outline_rect.mBottom - BORDER_WIDTH);
+			gGL.vertex2i(outline_rect.mLeft, outline_rect.mTop);
 		}
 		gGL.end();
 	}
@@ -721,7 +711,7 @@ void LLSnapshotLivePreview::draw()
 				LLRect const& rect = mFallFullScreenImageRect;
 				gGL.translatef((F32)rect.mLeft, (F32)rect.mBottom - ll_round(getRect().getHeight() * 2.f * (fall_interp * fall_interp)), 0.f);
 				gGL.rotatef(-45.f * fall_interp, 0.f, 0.f, 1.f);
-				gGL.begin(LLRender::QUADS);
+				gGL.begin(LLRender::TRIANGLE_STRIP);
 				{
 					gGL.texCoord2f(uv_width, uv_height);
 					gGL.vertex2i(rect.getWidth(), rect.getHeight() );
@@ -729,11 +719,11 @@ void LLSnapshotLivePreview::draw()
 					gGL.texCoord2f(0.f, uv_height);
 					gGL.vertex2i(0, rect.getHeight() );
 
-					gGL.texCoord2f(0.f, 0.f);
-					gGL.vertex2i(0, 0);
-
 					gGL.texCoord2f(uv_width, 0.f);
 					gGL.vertex2i(rect.getWidth(), 0);
+
+					gGL.texCoord2f(0.f, 0.f);
+					gGL.vertex2i(0, 0);
 				}
 				gGL.end();
 			}
@@ -3196,16 +3186,9 @@ BOOL LLSnapshotFloaterView::handleKey(KEY key, MASK mask, BOOL called_from_paren
 		return LLFloaterView::handleKey(key, mask, called_from_parent);
 	}
 
-	if (called_from_parent)
-	{
-		// pass all keystrokes down
-		LLFloaterView::handleKey(key, mask, called_from_parent);
-	}
-	else
-	{
-		// bounce keystrokes back down
-		LLFloaterView::handleKey(key, mask, TRUE);
-	}
+	// pass all keystrokes down
+	// bounce keystrokes back down
+	LLFloaterView::handleKey(key, mask, TRUE);
 	return TRUE;
 }
 

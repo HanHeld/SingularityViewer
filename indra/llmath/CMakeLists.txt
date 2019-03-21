@@ -13,6 +13,7 @@ set(llmath_SOURCE_FILES
     llbbox.cpp
     llbboxlocal.cpp
     llcalc.cpp
+    llcalcparser.cpp
     llcamera.cpp
     llcoordframe.cpp
     llline.cpp
@@ -21,6 +22,7 @@ set(llmath_SOURCE_FILES
     llperlin.cpp
     llquaternion.cpp
     llrect.cpp
+	llrigginginfo.cpp
     llsdutil_math.cpp
     llsphere.cpp
     llvector4a.cpp
@@ -66,6 +68,7 @@ set(llmath_HEADER_FILES
     llquaternion2.h
     llquaternion2.inl
     llrect.h
+	llrigginginfo.h
     llsdutil_math.h
     llsimdmath.h
     llsimdtypes.h
@@ -97,4 +100,3 @@ set_source_files_properties(${llmath_HEADER_FILES}
 list(APPEND llmath_SOURCE_FILES ${llmath_HEADER_FILES})
 
 add_library (llmath ${llmath_SOURCE_FILES})
-add_dependencies(llmath prepare)

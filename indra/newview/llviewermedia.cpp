@@ -798,19 +798,19 @@ static bool proximity_comparitor(const LLViewerMediaImpl* i1, const LLViewerMedi
 	}
 }
 
-static LLFastTimer::DeclareTimer FTM_MEDIA_UPDATE("Update Media");
-static LLFastTimer::DeclareTimer FTM_MEDIA_SPARE_IDLE("Spare Idle");
-static LLFastTimer::DeclareTimer FTM_MEDIA_UPDATE_INTEREST("Update/Interest");
-static LLFastTimer::DeclareTimer FTM_MEDIA_SORT("Sort");
-static LLFastTimer::DeclareTimer FTM_MEDIA_SORT2("Sort 2");
-static LLFastTimer::DeclareTimer FTM_MEDIA_MISC("Misc");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_UPDATE("Update Media");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_SPARE_IDLE("Spare Idle");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_UPDATE_INTEREST("Update/Interest");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_SORT("Sort");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_SORT2("Sort 2");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_MISC("Misc");
 
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // static
 void LLViewerMedia::updateMedia(void *dummy_arg)
 {
-	LLFastTimer t1(FTM_MEDIA_UPDATE);
+	LL_RECORD_BLOCK_TIME(FTM_MEDIA_UPDATE);
 	
 	// Enable/disable the plugin read thread
 	static LLCachedControl<bool> pluginUseReadThread(gSavedSettings, "PluginUseReadThread");
@@ -831,7 +831,7 @@ void LLViewerMedia::updateMedia(void *dummy_arg)
 	impl_list::iterator end = sViewerMediaImplList.end();
 
 	{
-		LLFastTimer t(FTM_MEDIA_UPDATE_INTEREST);
+		LL_RECORD_BLOCK_TIME(FTM_MEDIA_UPDATE_INTEREST);
 		for(; iter != end;)
 		{
 			LLViewerMediaImpl* pimpl = *iter++;
@@ -843,12 +843,12 @@ void LLViewerMedia::updateMedia(void *dummy_arg)
 	// Let the spare media source actually launch
 	if(sSpareBrowserMediaSource)
 	{
-		LLFastTimer t(FTM_MEDIA_SPARE_IDLE);
+		LL_RECORD_BLOCK_TIME(FTM_MEDIA_SPARE_IDLE);
 		sSpareBrowserMediaSource->idle();
 	}
 		
 	{
-		LLFastTimer t(FTM_MEDIA_SORT);
+		LL_RECORD_BLOCK_TIME(FTM_MEDIA_SORT);
 		// Sort the static instance list using our interest criteria
 		sViewerMediaImplList.sort(priorityComparitor);
 	}
@@ -880,7 +880,7 @@ void LLViewerMedia::updateMedia(void *dummy_arg)
 	// If max_normal + max_low is less than max_instances, things will tend to get unloaded instead of being set to slideshow.
 	
 	{
-		LLFastTimer t(FTM_MEDIA_MISC);
+		LL_RECORD_BLOCK_TIME(FTM_MEDIA_MISC);
 		for(; iter != end; iter++)
 		{
 			LLViewerMediaImpl* pimpl = *iter;
@@ -1049,7 +1049,7 @@ void LLViewerMedia::updateMedia(void *dummy_arg)
 	}
 	else
 	{
-		LLFastTimer t(FTM_MEDIA_SORT2);
+		LL_RECORD_BLOCK_TIME(FTM_MEDIA_SORT2);
 		// Use a distance-based sort for proximity values.  
 		std::stable_sort(proximity_order.begin(), proximity_order.end(), proximity_comparitor);
 	}
@@ -1832,7 +1832,7 @@ LLPluginClassMedia* LLViewerMediaImpl::newSourceFromMediaType(std::string media_
 	
 	// HACK: we always try to keep a spare running webkit plugin around to improve launch times.
 	// If a spare was already created before PluginAttachDebuggerToPlugins was set, don't use it.
-	if((plugin_basename == "media_plugin_webkit") &&
+	if ((plugin_basename == "media_plugin_cef") &&
 		!gSavedSettings.getBOOL("PluginAttachDebuggerToPlugins"))
 	{
 		media_source = LLViewerMedia::getSpareBrowserMediaSource();
@@ -1853,20 +1853,26 @@ LLPluginClassMedia* LLViewerMediaImpl::newSourceFromMediaType(std::string media_
 	{
 		std::string launcher_name = gDirUtilp->getLLPluginLauncher();
 		std::string plugin_name = gDirUtilp->getLLPluginFilename(plugin_basename);
-		std::string user_data_path = gDirUtilp->getOSUserAppDir();
-		user_data_path += gDirUtilp->getDirDelimiter();
+
+		std::string user_data_path_cache = gDirUtilp->getCacheDir(false);
+		user_data_path_cache += gDirUtilp->getDirDelimiter();
+
+		std::string user_data_path_cookies = gDirUtilp->getOSUserAppDir();
+		user_data_path_cookies += gDirUtilp->getDirDelimiter();
+
+		std::string user_data_path_logs = gDirUtilp->getExpandedFilename(LL_PATH_LOGS, "");
 
 		// Fix for EXT-5960 - make browser profile specific to user (cache, cookies etc.)
 		// If the linden username returned is blank, that can only mean we are
 		// at the login page displaying login Web page or Web browser test via Develop menu.
 		// In this case we just use whatever gDirUtilp->getOSUserAppDir() gives us (this
 		// is what we always used before this change)
-		std::string linden_user_dir = gDirUtilp->getLindenUserDir(true);
+		std::string linden_user_dir = gDirUtilp->getLindenUserDir();
 		if ( ! linden_user_dir.empty() )
 		{
 			// gDirUtilp->getLindenUserDir() is whole path, not just Linden name
-			user_data_path = linden_user_dir;
-			user_data_path += gDirUtilp->getDirDelimiter();
+			user_data_path_cookies = linden_user_dir;
+			user_data_path_cookies += gDirUtilp->getDirDelimiter();
 		};
 
 		// See if the plugin executable exists
@@ -1883,7 +1889,7 @@ LLPluginClassMedia* LLViewerMediaImpl::newSourceFromMediaType(std::string media_
 		{
 			media_source = new LLPluginClassMedia(owner);
 			media_source->setSize(default_width, default_height);
-			media_source->setUserDataPath(user_data_path);
+			media_source->setUserDataPath(user_data_path_cache, user_data_path_cookies, user_data_path_logs);
 			media_source->setLanguageCode(LLUI::getLanguage());
 
 			// collect 'cookies enabled' setting from prefs and send to embedded browser
@@ -1900,6 +1906,9 @@ LLPluginClassMedia* LLViewerMediaImpl::newSourceFromMediaType(std::string media_
 
 			bool media_plugin_debugging_enabled = gSavedSettings.getBOOL("MediaPluginDebugging");
 			media_source->enableMediaPluginDebugging( media_plugin_debugging_enabled );
+
+			// need to set agent string here before instance created
+			media_source->setBrowserUserAgent(LLViewerMedia::getCurrentUserAgent());
 
 			media_source->setTarget(target);
 			
@@ -1976,7 +1985,7 @@ bool LLViewerMediaImpl::initializePlugin(const std::string& media_type)
 		// Qt/WebKit loads from your system location.
 		// Note: This needs the new CA.pem file with the Equifax Secure Certificate Authority 
 		// cert at the bottom: (MIIDIDCCAomgAwIBAgIENd70zzANBg)
-		std::string ca_path = gDirUtilp->getExpandedFilename( LL_PATH_APP_SETTINGS, "CA.pem" );
+		std::string ca_path = gDirUtilp->getExpandedFilename( LL_PATH_APP_SETTINGS, "ca-bundle.crt" );
 		media_source->addCertificateFilePath( ca_path );
 
 		media_source->proxy_setup(gSavedSettings.getBOOL("BrowserProxyEnabled"), gSavedSettings.getString("BrowserProxyAddress"), gSavedSettings.getS32("BrowserProxyPort"));
@@ -2426,6 +2435,18 @@ void LLViewerMediaImpl::mouseMove(const LLVector2& texture_coords, MASK mask)
 	}
 }
 
+void LLViewerMediaImpl::mouseDoubleClick(const LLVector2& texture_coords, MASK mask)
+{
+	LLPluginClassMedia* mMediaSource = getMediaPlugin();
+    if (mMediaSource)
+    {
+        S32 x, y;
+        scaleTextureCoords(texture_coords, &x, &y);
+
+        mouseDoubleClick(x, y, mask);
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 void LLViewerMediaImpl::mouseDoubleClick(S32 x, S32 y, MASK mask, S32 button)
 {
@@ -2779,7 +2800,7 @@ bool LLViewerMediaImpl::handleKeyHere(KEY key, MASK mask)
 	{
 		// FIXME: THIS IS SO WRONG.
 		// Menu keys should be handled by the menu system and not passed to UI elements, but this is how LLTextEditor and LLLineEditor do it...
-		if( MASK_CONTROL & mask && key != KEY_LEFT && key != KEY_RIGHT && key != KEY_HOME && key != KEY_END)
+		if (MASK_CONTROL & mask && key != KEY_LEFT && key != KEY_RIGHT && key != KEY_HOME && key != KEY_END)
 		{
 			result = true;
 		}
@@ -2810,18 +2831,38 @@ bool LLViewerMediaImpl::handleKeyHere(KEY key, MASK mask)
 
 		if(!result)
 		{
-			
 			LLSD native_key_data = gViewerWindow->getWindow()->getNativeKeyData();
-			
-			result = mMediaSource->keyEvent(LLPluginClassMedia::KEY_EVENT_DOWN ,key, mask, native_key_data);
-			// Since the viewer internal event dispatching doesn't give us key-up events, simulate one here.
-			(void)mMediaSource->keyEvent(LLPluginClassMedia::KEY_EVENT_UP ,key, mask, native_key_data);
+			result = mMediaSource->keyEvent(LLPluginClassMedia::KEY_EVENT_DOWN, key, mask, native_key_data);
 		}
 	}
 	
 	return result;
 }
+//////////////////////////////////////////////////////////////////////////////////////////
+bool LLViewerMediaImpl::handleKeyUpHere(KEY key, MASK mask)
+{
+	bool result = false;
 
+	LLPluginClassMedia* mMediaSource = getMediaPlugin();
+
+	if (mMediaSource)
+	{
+		// FIXME: THIS IS SO WRONG.
+		// Menu keys should be handled by the menu system and not passed to UI elements, but this is how LLTextEditor and LLLineEditor do it...
+		if (MASK_CONTROL & mask && key != KEY_LEFT && key != KEY_RIGHT && key != KEY_HOME && key != KEY_END)
+		{
+			result = true;
+		}
+
+		if (!result)
+		{
+			LLSD native_key_data = gViewerWindow->getWindow()->getNativeKeyData();
+			result = mMediaSource->keyEvent(LLPluginClassMedia::KEY_EVENT_UP, key, mask, native_key_data);
+		}
+	}
+
+	return result;
+}
 //////////////////////////////////////////////////////////////////////////////////////////
 bool LLViewerMediaImpl::handleUnicodeCharHere(llwchar uni_char)
 {
@@ -2868,14 +2909,14 @@ bool LLViewerMediaImpl::canNavigateBack()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-static LLFastTimer::DeclareTimer FTM_MEDIA_DO_UPDATE("Do Update");
-static LLFastTimer::DeclareTimer FTM_MEDIA_GET_DATA("Get Data");
-static LLFastTimer::DeclareTimer FTM_MEDIA_SET_SUBIMAGE("Set Subimage");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_DO_UPDATE("Do Update");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_GET_DATA("Get Data");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_SET_SUBIMAGE("Set Subimage");
 
 
 void LLViewerMediaImpl::update()
 {
-	LLFastTimer t(FTM_MEDIA_DO_UPDATE);
+	LL_RECORD_BLOCK_TIME(FTM_MEDIA_DO_UPDATE);
 	LLPluginClassMedia* mMediaSource = getMediaPlugin();
 	if(mMediaSource == NULL)
 	{
@@ -2979,7 +3020,7 @@ void LLViewerMediaImpl::update()
 
 				U8* data = NULL;
 				{
-					LLFastTimer t(FTM_MEDIA_GET_DATA);
+					LL_RECORD_BLOCK_TIME(FTM_MEDIA_GET_DATA);
 					data = mMediaSource->getBitsData();
 				}
 
@@ -2988,7 +3029,7 @@ void LLViewerMediaImpl::update()
 				data += ( y_pos * mMediaSource->getTextureDepth() );
 				
 				{
-					LLFastTimer t(FTM_MEDIA_SET_SUBIMAGE);
+					LL_RECORD_BLOCK_TIME(FTM_MEDIA_SET_SUBIMAGE);
 					placeholder_image->setSubImage(
 							data, 
 							mMediaSource->getBitsWidth(),
@@ -3221,13 +3262,13 @@ bool LLViewerMediaImpl::isForcedUnloaded() const
 	{
 		return true;
 	}
-	
+
 	// If this media's class is not supposed to be shown, unload
 	if (!shouldShowBasedOnClass())
 	{
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -3240,19 +3281,19 @@ bool LLViewerMediaImpl::isPlayable() const
 		// All of the forced-unloaded criteria also imply not playable.
 		return false;
 	}
-	
+
 	if(hasMedia())
 	{
 		// Anything that's already playing is, by definition, playable.
 		return true;
 	}
-	
+
 	if(!mMediaURL.empty())
 	{
 		// If something has navigated the instance, it's ready to be played.
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -3580,11 +3621,11 @@ BOOL LLViewerMediaImpl::isUpdated()
 	return mIsUpdated ;
 }
 
-static LLFastTimer::DeclareTimer FTM_MEDIA_CALCULATE_INTEREST("Calculate Interest");
+static LLTrace::BlockTimerStatHandle FTM_MEDIA_CALCULATE_INTEREST("Calculate Interest");
 
 void LLViewerMediaImpl::calculateInterest()
 {
-	LLFastTimer t(FTM_MEDIA_CALCULATE_INTEREST);
+	LL_RECORD_BLOCK_TIME(FTM_MEDIA_CALCULATE_INTEREST);
 	LLViewerMediaTexture* texture = LLViewerTextureManager::findMediaTexture( mTextureId );
 	
 	if(texture != NULL)

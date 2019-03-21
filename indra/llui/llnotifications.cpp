@@ -284,7 +284,8 @@ LLNotificationForm::LLNotificationForm(const LLSD& sd)
 	}
 	else
 	{
-		LL_WARNS() << "Invalid form data " << sd << LL_ENDL;
+		if (!sd.isUndefined())
+			LL_WARNS() << "Invalid form data " << sd << LL_ENDL;
 		mFormData = LLSD::emptyArray();
 	}
 }
@@ -415,7 +416,7 @@ LLNotification::LLNotification(const LLNotification::Params& p) :
 	mTimestamp(p.timestamp), 
 	mSubstitutions(p.substitutions),
 	mPayload(p.payload),
-	mExpiresAt(0),
+	mExpiresAt(F64SecondsImplicit()),
 	mResponseFunctorName(p.functor_name),
 	mTemporaryResponder(p.mTemporaryResponder),
 	mRespondedTo(false),
@@ -891,7 +892,7 @@ bool LLNotificationChannelBase::updateItem(const LLSD& payload, LLNotificationPt
 		assert(!wasFound);
 		if (passesFilter)
 		{
-			LL_INFOS() << "Inserting " << pNotification->getName() << LL_ENDL;
+			//LL_INFOS() << "Inserting " << pNotification->getName() << LL_ENDL;
 			// not in our list, add it and say so
 			mItems.insert(pNotification);
 			abortProcessing = mChanged(payload);
@@ -1297,14 +1298,20 @@ LLXMLNodePtr LLNotificationTemplates::checkForXMLTemplate(LLXMLNodePtr item)
 
 bool LLNotificationTemplates::loadTemplates()
 {
-	const std::string xml_filename = "notifications.xml";
+	LL_INFOS() << "Reading notifications template" << LL_ENDL;
+	// Passing findSkinnedFilenames(constraint=LLDir::ALL_SKINS) makes it
+	// output all relevant pathnames instead of just the ones from the most
+	// specific skin.
+	std::vector<std::string> search_paths =
+		gDirUtilp->findSkinnedFilenames(LLDir::XUI, "notifications.xml", LLDir::ALL_SKINS);
+
+	std::string base_filename = search_paths.front();
 	LLXMLNodePtr root;
-	
-	BOOL success  = LLUICtrlFactory::getLayeredXMLNode(xml_filename, root);
+	BOOL success  = LLXMLNode::getLayeredXMLNode(root, search_paths);
 	
 	if (!success || root.isNull() || !root->hasName( "notifications" ))
 	{
-		LL_ERRS() << "Problem reading UI Notifications file: " << xml_filename << LL_ENDL;
+		LL_ERRS() << "Problem reading XML from UI Notifications file: " << base_filename << LL_ENDL;
 		return false;
 	}
 	
@@ -1337,7 +1344,7 @@ bool LLNotificationTemplates::loadTemplates()
 		if (!item->hasName("notification"))
 		{
             LL_WARNS() << "Unexpected entity " << item->getName()->mString << 
-                       " found in " << xml_filename << LL_ENDL;
+                       " found in notifications.xml [language=]" << LLUI::getLanguage() << LL_ENDL;
 			continue;
 		}
 	}
@@ -1347,14 +1354,20 @@ bool LLNotificationTemplates::loadTemplates()
 		
 bool LLNotifications::loadNotifications()
 {
-	const std::string xml_filename = "notifications.xml";
+	LL_INFOS() << "Reading notifications template" << LL_ENDL;
+	// Passing findSkinnedFilenames(constraint=LLDir::ALL_SKINS) makes it
+	// output all relevant pathnames instead of just the ones from the most
+	// specific skin.
+	std::vector<std::string> search_paths =
+		gDirUtilp->findSkinnedFilenames(LLDir::XUI, "notifications.xml", LLDir::ALL_SKINS);
+
+	std::string base_filename = search_paths.front();
 	LLXMLNodePtr root;
-	
-	BOOL success  = LLUICtrlFactory::getLayeredXMLNode(xml_filename, root);
+	BOOL success  = LLXMLNode::getLayeredXMLNode(root, search_paths);
 	
 	if (!success || root.isNull() || !root->hasName( "notifications" ))
 	{
-		LL_ERRS() << "Problem reading UI Notifications file: " << xml_filename << LL_ENDL;
+		LL_ERRS() << "Problem reading XML from UI Notifications file: " << base_filename << LL_ENDL;
 		return false;
 	}
 	

@@ -76,12 +76,12 @@
 #include "llfloaterland.h"
 #include "llfloaterlandholdings.h"
 #include "llfloatermap.h"
+#include "llfloatermarketplacelistings.h"
 #include "llfloatermediafilter.h"
 #include "llfloatermemleak.h"
 #include "llfloatermessagelog.h"
 #include "llfloatermute.h"
 #include "llfloaternotificationsconsole.h"
-#include "llfloateroutbox.h"
 #include "llfloaterpathfindingcharacters.h"
 #include "llfloaterpathfindinglinksets.h"
 #include "llfloaterperms.h"
@@ -165,7 +165,6 @@ struct MenuFloaterDict : public LLSingleton<MenuFloaterDict>
 		registerFloater("about", boost::bind(&LLFloaterAbout::show,(void*)NULL));
 		registerFloater("always run", boost::bind(toggle_always_run), boost::bind(&LLAgent::getAlwaysRun, &gAgent));
 		registerFloater("anims_explorer", boost::bind(LLFloaterExploreAnimations::show));
-		registerFloater("ao", boost::bind(LLFloaterAO::show, (void*)NULL));
 		registerFloater("appearance", boost::bind(LLFloaterCustomize::show));
 		registerFloater("asset_blacklist", boost::bind(LLFloaterBlacklist::toggle), boost::bind(LLFloaterBlacklist::visible));
 		registerFloater("build", boost::bind(toggle_build));
@@ -185,7 +184,7 @@ struct MenuFloaterDict : public LLSingleton<MenuFloaterDict>
 		//Singu TODO: Re-implement f1 help.
 		//registerFloater("help f1", boost::bind(/*gViewerHtmlHelp.show*/));
 		registerFloater("help tutorial", boost::bind(LLFloaterHUD::showHUD));
-		registerFloater("inventory", boost::bind(LLInventoryView::toggleVisibility, (void*)NULL), boost::bind(is_visible_view, static_cast<boost::function<LLView* ()> >(LLInventoryView::getActiveInventory)));
+		registerFloater("inventory", boost::bind(LLPanelMainInventory::toggleVisibility, (void*)NULL), boost::bind(is_visible_view, static_cast<boost::function<LLView* ()> >(LLPanelMainInventory::getActiveInventory)));
 		registerFloater("local assets", boost::bind(FloaterLocalAssetBrowser::show, (void*)0));
 		registerFloater("mean events", boost::bind(LLFloaterBump::show, (void*)NULL));
 		registerFloater("media ticker", boost::bind(handle_ticker_toggle, (void*)NULL), boost::bind(SHFloaterMediaTicker::instanceExists));
@@ -194,7 +193,6 @@ struct MenuFloaterDict : public LLSingleton<MenuFloaterDict>
 		registerFloater("mouselook", boost::bind(toggle_mouselook));
 		registerFloater("my land", boost::bind(LLFloaterLandHoldings::show, (void*)NULL));
 		registerFloater("outfit", boost::bind(show_outfit_dialog));
-		registerFloater("PostProcess", boost::bind(LLFloaterPostProcess::show));
 		registerFloater("preferences", boost::bind(LLFloaterPreference::show, (void*)NULL));
 		registerFloater("quit", boost::bind(&LLAppViewer::userQuit, LLAppViewer::instance()));
 		registerFloater("RegionDebugConsole", boost::bind(handle_singleton_toggle<LLFloaterRegionDebugConsole>, (void*)NULL), boost::bind(LLFloaterRegionDebugConsole::instanceExists));
@@ -213,6 +211,7 @@ struct MenuFloaterDict : public LLSingleton<MenuFloaterDict>
 		registerFloater<LLFloaterLand>					("about land");
 		registerFloater<LLFloaterRegionInfo>			("about region");
 		registerFloater<LLFloaterActiveSpeakers>		("active speakers");
+		registerFloater<LLFloaterAO>					("ao");
 		registerFloater<JCFloaterAreaSearch>			("areasearch");
 		registerFloater<LLFloaterAutoReplaceSettings>	("autoreplace");
 		registerFloater<LLFloaterAvatar>				("avatar");
@@ -230,13 +229,14 @@ struct MenuFloaterDict : public LLSingleton<MenuFloaterDict>
 		registerFloater<LLFloaterJoystick>				("joystick");
 		registerFloater<LLFloaterMediaFilter>			("media filter");
 		registerFloater<LLFloaterMap>					("mini map");
+		registerFloater<LLFloaterMarketplaceListings>	("marketplace_listings");
 		registerFloater<LLFloaterMove>					("movement controls");
 		registerFloater<LLFloaterMute>					("mute list");
 		registerFloater<LLFloaterNotificationConsole>	("notifications console");
-		registerFloater<LLFloaterOutbox>				("outbox");
 		registerFloater<LLFloaterPathfindingCharacters>	("pathfinding_characters");
 		registerFloater<LLFloaterPathfindingLinksets>	("pathfinding_linksets");
 		registerFloater<LLFloaterPermsDefault>			("perm prefs");
+		registerFloater<LLFloaterPostProcess>			("PostProcess");
 		registerFloater<LLFloaterAvatarList>			("radar");
 		registerFloater<ALFloaterRegionTracker>			("region_tracker");
 		registerFloater<LLFloaterScriptLimits>			("script info");

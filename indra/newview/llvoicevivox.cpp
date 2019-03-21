@@ -2647,7 +2647,7 @@ void LLVivoxVoiceClient::sendPositionalUpdate(void)
 				if(!p->mIsSelf)
 				{
 					// scale from the range 0.0-1.0 to vivox volume in the range 0-100
-					S32 volume = ll_round(p->mVolume / VOLUME_SCALE_VIVOX);
+					S32 volume = ll_pos_round(p->mVolume / VOLUME_SCALE_VIVOX);
 					bool mute = p->mOnMuteList;
 
 					if(mute)
@@ -3912,7 +3912,7 @@ void LLVivoxVoiceClient::sessionState::removeParticipant(const std::string& uri)
 		vector_replace_with_last(mParticipantList, iter);
 		if (mParticipantList.empty() || mParticipantList.capacity() - mParticipantList.size() > 16)
 		{
-			vector_shrink_to_fit(mParticipantList);
+			mParticipantList.shrink_to_fit();
 		}
 		mParticipantsChanged = true;
 		LL_DEBUGS("Voice") << "participant \"" << uri << "\" (" << iter->mAvatarID << ") removed." << LL_ENDL;
@@ -3929,7 +3929,7 @@ void LLVivoxVoiceClient::sessionState::removeAllParticipants()
 
 	// Singu Note: mParticipantList has replaced both mParticipantsByURI and mParticipantsByUUID, meaning we don't have two maps to maintain any longer.
 	mParticipantList.clear();
-	vector_shrink_to_fit(mParticipantList);
+	mParticipantList.shrink_to_fit();
 }
 
 void LLVivoxVoiceClient::getParticipantList(std::set<LLUUID> &participants)
@@ -6364,7 +6364,7 @@ LLVivoxProtocolParser::~LLVivoxProtocolParser()
 		XML_ParserFree(parser);
 }
 
-static LLFastTimer::DeclareTimer FTM_VIVOX_PROCESS("Vivox Process");
+static LLTrace::BlockTimerStatHandle FTM_VIVOX_PROCESS("Vivox Process");
 
 // virtual
 LLIOPipe::EStatus LLVivoxProtocolParser::process_impl(
@@ -6374,7 +6374,7 @@ LLIOPipe::EStatus LLVivoxProtocolParser::process_impl(
 													  LLSD& context,
 													  LLPumpIO* pump)
 {
-	LLFastTimer t(FTM_VIVOX_PROCESS);
+	LL_RECORD_BLOCK_TIME(FTM_VIVOX_PROCESS);
 	LLBufferStream istr(channels, buffer.get());
 	std::ostringstream ostr;
 	while (istr.good())

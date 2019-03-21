@@ -95,9 +95,26 @@ class LLFileEnableSaveAs : public view_listener_t
 {
 	bool handleEvent(LLPointer<LLEvent> event, const LLSD& userdata)
 	{
-		bool new_value = gFloaterView->getFrontmost() &&
-						 gFloaterView->getFrontmost()->canSaveAs();
-		gMenuHolder->findControl(userdata["control"].asString())->setValue(new_value);
+		LLFloater* frontmost = gFloaterView->getFrontmost();
+		if (frontmost && frontmost->hasChild("Save Preview As...", true)) // If we're the tearoff.
+		{
+			// Get the next frontmost sibling.
+			const LLView::child_list_const_iter_t kids_end = gFloaterView->endChild();
+			LLView::child_list_const_iter_t kid = std::find(gFloaterView->beginChild(), kids_end, frontmost);
+			if (kids_end != kid)
+			{
+				for (++kid; kid != kids_end; ++kid)
+				{
+					LLView* viewp = *kid;
+					if (viewp->getVisible() && !viewp->isDead())
+					{
+						frontmost = static_cast<LLFloater*>(viewp);
+						break;
+					}
+				}
+			}
+		}
+		gMenuHolder->findControl(userdata["control"].asString())->setValue(frontmost && frontmost->canSaveAs());
 		return true;
 	}
 };
@@ -392,11 +409,17 @@ class LLFileUploadBulk : public view_listener_t
 		//
 		// Also fix single upload to charge first, then refund
 		// <edit>
-		S32 expected_upload_cost = LLGlobalEconomy::Singleton::getInstance()->getPriceUpload();
-		const char* notification_type = expected_upload_cost ? "BulkTemporaryUpload" : "BulkTemporaryUploadFree";
-		LLSD args;
-		args["UPLOADCOST"] = gHippoGridManager->getConnectedGrid()->getUploadFee();
-		LLNotificationsUtil::add(notification_type, args, LLSD(), onConfirmBulkUploadTemp);
+		const auto grid(gHippoGridManager->getConnectedGrid());
+		if (grid->isSecondLife()) // For SL, we can't do temp uploads anymore.
+		{
+			doBulkUpload();
+		}
+		else
+		{
+			S32 expected_upload_cost = LLGlobalEconomy::Singleton::getInstance()->getPriceUpload();
+			const char* notification_type = expected_upload_cost ? "BulkTemporaryUpload" : "BulkTemporaryUploadFree";
+			LLNotificationsUtil::add(notification_type, LLSD().with("UPLOADCOST", grid->getUploadFee()), LLSD(), onConfirmBulkUploadTemp);
+		}
 		return true;
 	}
 
@@ -411,10 +434,15 @@ class LLFileUploadBulk : public view_listener_t
 		else					// cancel
 			return false;
 
+		doBulkUpload(enabled);
+		return true;
+	}
+
+	static void doBulkUpload(bool temp = false)
+	{
 		AIFilePicker* filepicker = AIFilePicker::create();
 		filepicker->open(FFLOAD_ALL, "", "openfile", true);
-		filepicker->run(boost::bind(&LLFileUploadBulk::onConfirmBulkUploadTemp_continued, enabled, filepicker));
-		return true;
+		filepicker->run(boost::bind(&LLFileUploadBulk::onConfirmBulkUploadTemp_continued, temp, filepicker));
 	}
 
 	static void onConfirmBulkUploadTemp_continued(bool enabled, AIFilePicker* filepicker)

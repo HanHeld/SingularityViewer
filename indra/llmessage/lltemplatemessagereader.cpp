@@ -326,7 +326,7 @@ void LLTemplateMessageReader::getF32(const char *block, const char *var,
 {
 	getData(block, var, &d, sizeof(F32), blocknum);
 
-	if( !llfinite( d ) )
+	if( !std::isfinite( d ) )
 	{
 		LL_WARNS() << "non-finite in getF32Fast " << block << " " << var 
 				<< LL_ENDL;
@@ -339,7 +339,7 @@ void LLTemplateMessageReader::getF64(const char *block, const char *var,
 {
 	getData(block, var, &d, sizeof(F64), blocknum);
 
-	if( !llfinite( d ) )
+	if( !std::isfinite( d ) )
 	{
 		LL_WARNS() << "non-finite in getF64Fast " << block << " " << var 
 				<< LL_ENDL;
@@ -530,7 +530,7 @@ void LLTemplateMessageReader::logRanOffEndOfPacket( const LLHost& host, const S3
 	gMessageSystem->callExceptionFunc(MX_RAN_OFF_END_OF_PACKET);
 }
 
-static LLFastTimer::DeclareTimer FTM_PROCESS_MESSAGES("Process Messages");
+static LLTrace::BlockTimerStatHandle FTM_PROCESS_MESSAGES("Process Messages");
 
 // decode a given message
 BOOL LLTemplateMessageReader::decodeData(const U8* buffer, const LLHost& sender, bool custom)
@@ -554,7 +554,7 @@ BOOL LLTemplateMessageReader::decodeData(const U8* buffer, const LLHost& sender,
 		iter != mCurrentRMessageTemplate->mMemberBlocks.end();
 		++iter)
 	{
-		LLMessageBlock* mbci = *iter;
+		LLMessageBlock* mbci = iter->second;
 		U8	repeat_number;
 		S32	i;
 
@@ -621,7 +621,7 @@ BOOL LLTemplateMessageReader::decodeData(const U8* buffer, const LLHost& sender,
 					 mbci->mMemberVariables.begin();
 				 iter != mbci->mMemberVariables.end(); iter++)
 			{
-				const LLMessageVariable& mvci = **iter;
+				const LLMessageVariable& mvci = *iter->second;
 
 				// ok, build out the variables
 				// add variable block
@@ -714,7 +714,7 @@ BOOL LLTemplateMessageReader::decodeData(const U8* buffer, const LLHost& sender,
 		}
 
 		{
-			LLFastTimer t(FTM_PROCESS_MESSAGES);
+			LL_RECORD_BLOCK_TIME(FTM_PROCESS_MESSAGES);
 			if( !mCurrentRMessageTemplate->callHandlerFunc(gMessageSystem) )
 			{
 				LL_WARNS() << "Message from " << sender << " with no handler function received: " << mCurrentRMessageTemplate->mName << LL_ENDL;

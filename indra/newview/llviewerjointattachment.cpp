@@ -83,15 +83,15 @@ U32 LLViewerJointAttachment::drawShape( F32 pixelArea, BOOL first_pass, BOOL is_
 {
 	if (LLVOAvatar::sShowAttachmentPoints)
 	{
-		LLGLDisable cull_face(GL_CULL_FACE);
+		LLGLDisable<GL_CULL_FACE> cull_face;
 		
 		gGL.color4f(1.f, 1.f, 1.f, 1.f);
-		gGL.begin(LLRender::QUADS);
+		gGL.begin(LLRender::TRIANGLE_STRIP);
 		{
 			gGL.vertex3f(-0.1f, 0.1f, 0.f);
 			gGL.vertex3f(-0.1f, -0.1f, 0.f);
-			gGL.vertex3f(0.1f, -0.1f, 0.f);
 			gGL.vertex3f(0.1f, 0.1f, 0.f);
+			gGL.vertex3f(0.1f, -0.1f, 0.f);
 		}gGL.end();
 	}
 	return 0;

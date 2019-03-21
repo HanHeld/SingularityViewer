@@ -222,7 +222,6 @@ protected:
 	BOOL				mCanApplyImmediately;
 	BOOL				mNoCopyTextureSelected;
 	F32					mContextConeOpacity;
-	LLSaveFolderState	mSavedFolderState;
 	BOOL				mSelectedItemPinned;
 	LLScrollListCtrl*   mLocalScrollCtrl; // tag: vaa emerald local_asset_browser
 
@@ -273,8 +272,6 @@ LLFloaterTexturePicker::LLFloaterTexturePicker(
 
 
 	setCanMinimize(FALSE);
-
-	mSavedFolderState.setApply(FALSE);
 }
 
 LLFloaterTexturePicker::~LLFloaterTexturePicker()
@@ -575,37 +572,29 @@ void LLFloaterTexturePicker::draw()
 		if (gFocusMgr.childHasKeyboardFocus(this) && mOwner->isInVisibleChain() && mContextConeOpacity > 0.001f)
 		{
 			gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-			LLGLEnable(GL_CULL_FACE);
-			gGL.begin(LLRender::QUADS);
+			LLGLEnable<GL_CULL_FACE> clip;
+			gGL.begin(LLRender::TRIANGLE_STRIP);
 			{
-				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_IN_ALPHA * mContextConeOpacity);
-				gGL.vertex2i(owner_rect.mLeft, owner_rect.mTop);
-				gGL.vertex2i(owner_rect.mRight, owner_rect.mTop);
-				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_OUT_ALPHA * mContextConeOpacity);
-				gGL.vertex2i(local_rect.mRight, local_rect.mTop);
-				gGL.vertex2i(local_rect.mLeft, local_rect.mTop);
-
 				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_OUT_ALPHA * mContextConeOpacity);
 				gGL.vertex2i(local_rect.mLeft, local_rect.mTop);
-				gGL.vertex2i(local_rect.mLeft, local_rect.mBottom);
 				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_IN_ALPHA * mContextConeOpacity);
-				gGL.vertex2i(owner_rect.mLeft, owner_rect.mBottom);
 				gGL.vertex2i(owner_rect.mLeft, owner_rect.mTop);
-
 				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_OUT_ALPHA * mContextConeOpacity);
-				gGL.vertex2i(local_rect.mRight, local_rect.mBottom);
 				gGL.vertex2i(local_rect.mRight, local_rect.mTop);
 				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_IN_ALPHA * mContextConeOpacity);
 				gGL.vertex2i(owner_rect.mRight, owner_rect.mTop);
-				gGL.vertex2i(owner_rect.mRight, owner_rect.mBottom);
-
-
 				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_OUT_ALPHA * mContextConeOpacity);
-				gGL.vertex2i(local_rect.mLeft, local_rect.mBottom);
 				gGL.vertex2i(local_rect.mRight, local_rect.mBottom);
 				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_IN_ALPHA * mContextConeOpacity);
 				gGL.vertex2i(owner_rect.mRight, owner_rect.mBottom);
+				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_OUT_ALPHA * mContextConeOpacity);
+				gGL.vertex2i(local_rect.mLeft, local_rect.mBottom);
+				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_IN_ALPHA * mContextConeOpacity);
 				gGL.vertex2i(owner_rect.mLeft, owner_rect.mBottom);
+				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_OUT_ALPHA * mContextConeOpacity);
+				gGL.vertex2i(local_rect.mLeft, local_rect.mTop);
+				gGL.color4f(0.f, 0.f, 0.f, CONTEXT_CONE_IN_ALPHA * mContextConeOpacity);
+				gGL.vertex2i(owner_rect.mLeft, owner_rect.mTop);
 			}
 			gGL.end();
 		}
@@ -613,11 +602,11 @@ void LLFloaterTexturePicker::draw()
 
 	if (gFocusMgr.childHasMouseCapture(getDragHandle()))
 	{
-		mContextConeOpacity = lerp(mContextConeOpacity, gSavedSettings.getF32("PickerContextOpacity"), LLCriticalDamp::getInterpolant(CONTEXT_FADE_TIME));
+		mContextConeOpacity = lerp(mContextConeOpacity, gSavedSettings.getF32("PickerContextOpacity"), LLSmoothInterpolation::getInterpolant(CONTEXT_FADE_TIME));
 	}
 	else
 	{
-		mContextConeOpacity = lerp(mContextConeOpacity, 0.f, LLCriticalDamp::getInterpolant(CONTEXT_FADE_TIME));
+		mContextConeOpacity = lerp(mContextConeOpacity, 0.f, LLSmoothInterpolation::getInterpolant(CONTEXT_FADE_TIME));
 	}
 
 	updateImageStats();
@@ -637,11 +626,11 @@ void LLFloaterTexturePicker::draw()
 		mTexturep = NULL;
 		if(mImageAssetID.notNull())
 		{
-			mTexturep = LLViewerTextureManager::getFetchedTexture(mImageAssetID, MIPMAP_YES, LLGLTexture::BOOST_PREVIEW);
+			mTexturep = LLViewerTextureManager::getFetchedTexture(mImageAssetID, FTT_DEFAULT, MIPMAP_YES, LLGLTexture::BOOST_PREVIEW);
 		}
 		else if (!mFallbackImageName.empty())
 		{
-			mTexturep = LLViewerTextureManager::getFetchedTextureFromFile(mFallbackImageName, MIPMAP_YES, LLGLTexture::BOOST_PREVIEW);
+			mTexturep = LLViewerTextureManager::getFetchedTextureFromFile(mFallbackImageName, FTT_LOCAL_FILE, MIPMAP_YES, LLGLTexture::BOOST_PREVIEW);
 		}
 
 		if (mTentativeLabel)
@@ -706,11 +695,10 @@ void LLFloaterTexturePicker::draw()
 		LLFolderView* folder_view = mInventoryPanel->getRootFolder();
 		if (!folder_view) return;
 
-		LLInventoryFilter* filter = folder_view->getFilter();
-		if (!filter) return;
+		LLInventoryFilter& filter = folder_view->getFilter();
 
-		bool is_filter_active = folder_view->getCompletedFilterGeneration() < filter->getCurrentGeneration() &&
-				filter->isNotDefault();
+		bool is_filter_active = folder_view->getCompletedFilterGeneration() < filter.getCurrentGeneration() &&
+				filter.isNotDefault();
 
 		// After inventory panel filter is applied we have to update
 		// constraint rect for the selected item because of folder view
@@ -1059,36 +1047,14 @@ void LLFloaterTexturePicker::setCanApply(bool can_preview, bool can_apply)
 
 void LLFloaterTexturePicker::onFilterEdit(const std::string& search_string )
 {
-	std::string upper_case_search_string = search_string;
-	LLStringUtil::toUpper(upper_case_search_string);
-
-	if (upper_case_search_string.empty())
+	if (!mInventoryPanel)
 	{
-		if (mInventoryPanel->getFilterSubString().empty())
-		{
-			// current filter and new filter empty, do nothing
-			return;
-		}
-
-		mSavedFolderState.setApply(TRUE);
-		mInventoryPanel->getRootFolder()->applyFunctorRecursively(mSavedFolderState);
-		// add folder with current item to list of previously opened folders
-		LLOpenFoldersWithSelection opener;
-		mInventoryPanel->getRootFolder()->applyFunctorRecursively(opener);
-		mInventoryPanel->getRootFolder()->scrollToShowSelection();
-
-	}
-	else if (mInventoryPanel->getFilterSubString().empty())
-	{
-		// first letter in search term, save existing folder open state
-		if (!mInventoryPanel->getRootFolder()->isFilterModified())
-		{
-			mSavedFolderState.setApply(FALSE);
-			mInventoryPanel->getRootFolder()->applyFunctorRecursively(mSavedFolderState);
-		}
+		return;
 	}
 
-	mInventoryPanel->setFilterSubString(upper_case_search_string);
+	// set new filter string
+	// Internally handles saving/restoring folder states.
+	mInventoryPanel->setFilterSubString(search_string);
 }
 
 void LLFloaterTexturePicker::onTextureSelect( const LLTextureEntry& te )
@@ -1339,7 +1305,7 @@ void LLTextureCtrl::setEnabled( BOOL enabled )
 	mCaption->setEnabled( enabled );
 	mEnable = enabled;
 
-	LLView::setEnabled( enabled );
+	//LLView::setEnabled( enabled ); // <edit/>
 }
 
 void LLTextureCtrl::setValid(BOOL valid )
@@ -1619,13 +1585,13 @@ void LLTextureCtrl::draw()
 	}
 	else if (!mImageAssetID.isNull())
 	{
-		mTexturep = LLViewerTextureManager::getFetchedTexture(mImageAssetID, MIPMAP_YES,LLGLTexture::BOOST_PREVIEW, LLViewerTexture::LOD_TEXTURE);
+		mTexturep = LLViewerTextureManager::getFetchedTexture(mImageAssetID, FTT_DEFAULT, MIPMAP_YES,LLGLTexture::BOOST_PREVIEW, LLViewerTexture::LOD_TEXTURE);
 		mTexturep->forceToSaveRawImage(0) ;
 	}
 	else if (!mFallbackImageName.empty())
 	{
 		// Show fallback image.
-		mTexturep =	LLViewerTextureManager::getFetchedTextureFromFile(mFallbackImageName, MIPMAP_YES,LLGLTexture::BOOST_PREVIEW, LLViewerTexture::LOD_TEXTURE);
+		mTexturep =	LLViewerTextureManager::getFetchedTextureFromFile(mFallbackImageName, FTT_LOCAL_FILE, MIPMAP_YES,LLGLTexture::BOOST_PREVIEW, LLViewerTexture::LOD_TEXTURE);
 	}
 	else	// mImageAssetID == LLUUID::null
 	{

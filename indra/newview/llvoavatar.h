@@ -184,7 +184,7 @@ public:
 	void						updateLODRiggedAttachments( void );
 	void						updateSoftwareSkinnedVertices(const LLMeshSkinInfo* skin, const LLVector4a* weight, const LLVolumeFace& vol_face, LLVertexBuffer *buffer);
 	/*virtual*/ BOOL   	 	 	isActive() const; // Whether this object needs to do an idleUpdate.
-	S32 						totalTextureMemForUUIDS(std::set<LLUUID>& ids);
+	S32Bytes					totalTextureMemForUUIDS(std::set<LLUUID>& ids);
 	bool 						allTexturesCompletelyDownloaded(std::set<LLUUID>& ids) const;
 	bool 						allLocalTexturesCompletelyDownloaded() const;
 	bool 						allBakedTexturesCompletelyDownloaded() const;
@@ -248,8 +248,18 @@ public:
 	void					dumpAnimationState();
 
 	virtual LLJoint*		getJoint(const std::string &name);
+	LLJoint*		        getJoint(S32 num);
 	
-	void					resetJointPositionsToDefault( void );
+	void 					addAttachmentOverridesForObject(LLViewerObject *vo);
+	void					resetJointsOnDetach(const LLUUID& mesh_id);
+	void					resetJointsOnDetach(LLViewerObject *vo);
+	bool					jointIsRiggedTo(const std::string& joint_name);
+	bool					jointIsRiggedTo(const std::string& joint_name, const LLViewerObject *vo);
+	void					clearAttachmentOverrides();
+	void					rebuildAttachmentOverrides();
+	void					showAttachmentOverrides(bool verbose = false) const;
+	void					getAttachmentOverrideNames(	std::set<std::string>& pos_names, 
+														std::set<std::string>& scale_names) const;
 	
 	/*virtual*/ const LLUUID&	getID() const;
 	/*virtual*/ void			addDebugText(const std::string& text);
@@ -283,6 +293,7 @@ private:
 	// Updates
 	//--------------------------------------------------------------------
 public:
+	void			updateDebugText();
 	virtual BOOL 	updateCharacter(LLAgent &agent);
 	void 			idleUpdateVoiceVisualizer(bool voice_enabled);
 	void 			idleUpdateMisc(bool detailed_update);
@@ -301,6 +312,19 @@ public:
 	static void		invalidateNameTags();
 	void			addNameTagLine(const std::string& line, const LLColor4& color, S32 style, const LLFontGL* font);
 	void 			idleUpdateRenderCost();
+	void			calculateUpdateRenderCost();
+	void			updateVisualComplexity() { mVisualComplexityStale = TRUE; }
+
+	S32				getVisualComplexity()			{ return mVisualComplexity;				};		// Numbers calculated here by rendering AV
+	S32				getAttachmentGeometryBytes()	{ return mAttachmentGeometryBytes;		};		// number of bytes in attached geometry
+	F32				getAttachmentSurfaceArea()		{ return mAttachmentSurfaceArea;		};		// estimated surface area of attachments
+
+	S32				getReportedVisualComplexity()					{ return mReportedVisualComplexity;				};	// Numbers as reported by the SL server
+	void			setReportedVisualComplexity(S32 value)			{ mReportedVisualComplexity = value;			};
+
+	S32				getUpdatePeriod()				{ return mUpdatePeriod;			};
+
+
 	void 			idleUpdateBelowWater();
 
 	//--------------------------------------------------------------------
@@ -347,6 +371,7 @@ public:
 
 	S32				mLastRezzedStatus;
 
+
 	void 			startPhase(const std::string& phase_name);
 	void 			stopPhase(const std::string& phase_name, bool err_check = true);
 	void			clearPhases();
@@ -360,6 +385,7 @@ protected:
 	BOOL			processFullyLoadedChange(bool loading);
 	void			updateRuthTimer(bool loading);
 	F32 			calcMorphAmount();
+
 private:
 	BOOL			mFirstFullyVisible;
 	BOOL			mFullyLoaded;
@@ -367,6 +393,7 @@ private:
 	BOOL			mFullyLoadedInitialized;
 	S32				mFullyLoadedFrameCounter;
 	S32				mVisualComplexity;
+	BOOL			mVisualComplexityStale;
 	LLFrameTimer	mFullyLoadedTimer;
 	LLFrameTimer	mRuthTimer;
 	bool			mFreezeTimeLangolier;	// True when this avatar was created during snapshot FreezeTime mode, and that mode is still active.
@@ -393,19 +420,16 @@ protected:
 	/*virtual*/ LLAvatarJointMesh*	createAvatarJointMesh(); // Returns LLViewerJointMesh
 public:
 	void				updateHeadOffset();
-	void				setPelvisOffset( bool hasOffset, const LLVector3& translation, F32 offset ) ;
-	bool				hasPelvisOffset( void ) { return mHasPelvisOffset; }
 	void				postPelvisSetRecalc( void );
-	void				setPelvisOffset( F32 pelvixFixupAmount );
 
 	/*virtual*/ BOOL	loadSkeletonNode();
+    void                initAttachmentPoints(bool ignore_hud_joints = false);
 	/*virtual*/ void	buildCharacter();
+	void				resetVisualParams();
+	void				resetSkeleton(bool reset_animations);
 
-	bool				mHasPelvisOffset;
-	LLVector3			mPelvisOffset;
-	F32					mLastPelvisToFoot;
-	F32					mPelvisFixup;
-	F32					mLastPelvisFixup;
+	LLVector3			mCurRootToHeadOffset;
+	LLVector3			mTargetRootToHeadOffset;
 
 	S32					mLastSkeletonSerialNum;
 
@@ -430,13 +454,16 @@ public:
 	U32			renderSkinnedAttachments();
 	U32 		renderTransparent(BOOL first_pass);
 	void 		renderCollisionVolumes();
+	void		renderBones();
 	void		renderJoints();
 	static void	deleteCachedImages(bool clearAll=true);
 	static void	destroyGL();
 	static void	restoreGL();
 	S32			mSpecialRenderMode; // special lighting
-	U32			mAttachmentGeometryBytes; //number of bytes in attached geometry
+	S32			mAttachmentGeometryBytes; //number of bytes in attached geometry
 	F32			mAttachmentSurfaceArea; //estimated surface area of attachments
+
+	S32			mReportedVisualComplexity;			// Numbers as reported by the SL server
 
 private:
 	bool		shouldAlphaMask();
@@ -682,9 +709,12 @@ protected:
  **                    APPEARANCE
  **/
 
+   LLPointer<LLAppearanceMessageContents> 	mLastProcessedAppearance;
+
 public:
 	void 			parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMessageContents& msg);
 	void 			processAvatarAppearance(LLMessageSystem* mesgsys);
+    void            applyParsedAppearanceMessage(LLAppearanceMessageContents& contents, bool slam_params);
 	void 			hideSkirt();
 	void			startAppearanceAnimation();
 	/*virtual*/ void bodySizeChanged();
@@ -744,6 +774,7 @@ public:
 	void 				clampAttachmentPositions();
 	virtual const LLViewerJointAttachment* attachObject(LLViewerObject *viewer_object);
 	virtual BOOL 		detachObject(LLViewerObject *viewer_object);
+	static bool		    getRiggedMeshID( LLViewerObject* pVO, LLUUID& mesh_id );
 	void				cleanupAttachedMesh( LLViewerObject* pVO );
 	static LLVOAvatar*  findAvatarFromAttachment(LLViewerObject* obj);
 	/*virtual*/ BOOL	isWearingWearableType(LLWearableType::EType type ) const;
@@ -905,6 +936,8 @@ public:
 private:
 	// set this property only with LLVOAvatar::sitDown method
 	BOOL 			mIsSitting;
+	// position backup in case of missing data
+	LLVector3		mLastRootPos;
 
 /**                    Hierarchy
  **                                                                            **
@@ -999,13 +1032,13 @@ private:
 	// General
 	//--------------------------------------------------------------------
 public:
+	void				getSortedJointNames(S32 joint_type, std::vector<std::string>& result) const;
 	static void			dumpArchetypeXML_header(LLAPRFile& file, std::string const& archetype_name = "???");
 	static void			dumpArchetypeXML_footer(LLAPRFile& file);
 	void				dumpArchetypeXML(const std::string& prefix, bool group_by_wearables = false);
 	void				dumpArchetypeXML_cont(std::string const& fullpath, bool group_by_wearables);
 	void 				dumpAppearanceMsgParams( const std::string& dump_prefix,
-												 const std::vector<F32>& paramsForDump,
-												 const LLTEContents& tec);
+												 const LLAppearanceMessageContents& contents);
 	static void			dumpBakedStatus();
 	const std::string 	getBakedStatusForPrintout() const;
 	void				dumpAvatarTEs(const std::string& context) const;
@@ -1063,6 +1096,21 @@ protected: // Shared with LLVOAvatarSelf
 /**                    Support classes
  **                                                                            **
  *******************************************************************************/
+
+public:
+	typedef std::array<F32, LL_MAX_JOINTS_PER_MESH_OBJECT * 12> rigged_matrix_array_t;
+	typedef std::vector<std::pair<LLUUID, std::pair<U32, rigged_matrix_array_t> > > rigged_transformation_cache_t;
+	rigged_transformation_cache_t& getRiggedMatrixCache()
+	{
+		return mRiggedMatrixDataCache;
+	}
+	void clearRiggedMatrixCache()
+	{
+		mRiggedMatrixDataCache.clear();
+	}
+private:
+	rigged_transformation_cache_t mRiggedMatrixDataCache;
+
 // <edit>
 
 //Avatar idle timer
@@ -1091,6 +1139,8 @@ extern const S32 MAX_TEXTURE_VIRTUAL_SIZE_RESET_INTERVAL;
 
 extern const F32 MAX_HOVER_Z;
 extern const F32 MIN_HOVER_Z;
+
+constexpr U32 NUM_ATTACHMENT_GROUPS = 24;
 
 void dump_sequential_xml(const std::string outprefix, const LLSD& content);
 

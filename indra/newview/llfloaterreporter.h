@@ -38,7 +38,6 @@
 #include "v3math.h"
 
 class LLAvatarName;
-class LLMessageSystem;
 class LLViewerTexture;
 class LLInventoryItem;
 class LLViewerObject;
@@ -48,9 +47,9 @@ class LLMeanCollisionData;
 struct LLResourceData;
 
 // these flags are used to label info requests to the server
-//const U32 BUG_REPORT_REQUEST 		= 0x01 << 0; // DEPRECATED
-const U32 COMPLAINT_REPORT_REQUEST 	= 0x01 << 1;
-const U32 OBJECT_PAY_REQUEST		= 0x01 << 2;
+//constexpr U32 BUG_REPORT_REQUEST 		= 0x01 << 0; // DEPRECATED
+constexpr U32 COMPLAINT_REPORT_REQUEST 	= 0x01 << 1;
+constexpr U32 OBJECT_PAY_REQUEST		= 0x01 << 2;
 
 
 // ************************************************************
@@ -103,9 +102,6 @@ public:
 	static void uploadDoneCallback(const LLUUID &uuid, void* user_data, S32 result, LLExtStat ext_status);
 	static void addDescription(const std::string& description, LLMeanCollisionData *mcd = NULL);
 	static void setDescription(const std::string& description, LLMeanCollisionData *mcd = NULL);
-	
-	// static
-	static void processRegionInfo(LLMessageSystem* msg);
 	
 	void setPickedObjectProperties(const std::string& object_name, const std::string& owner_name, const LLUUID owner_id);
 

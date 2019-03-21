@@ -86,10 +86,10 @@ LLAssetType::EType LLWearable::getAssetType() const
 	return LLWearableType::getAssetType(mType);
 }
 
-BOOL LLWearable::exportFile(LLFILE* fp) const
+BOOL LLWearable::exportFile(const std::string& filename) const
 {
-	llofstream ofs(fp);
-	return exportStream(ofs);
+	llofstream ofs(filename.c_str(), std::ios_base::out | std::ios_base::trunc | std::ios_base::binary);
+	return ofs.is_open() && exportStream(ofs);
 }
 
 // virtual
@@ -105,13 +105,13 @@ BOOL LLWearable::exportStream( std::ostream& output_stream ) const
 	output_stream << mDescription << "\n";
 
 	// permissions
-	if( !mPermissions.exportStream( output_stream ) )
+	if( !mPermissions.exportLegacyStream( output_stream ) )
 	{
 		return FALSE;
 	}
 
 	// sale info
-	if( !mSaleInfo.exportStream( output_stream ) )
+	if( !mSaleInfo.exportLegacyStream( output_stream ) )
 	{
 		return FALSE;
 	}
@@ -169,9 +169,9 @@ void LLWearable::createVisualParams(LLAvatarAppearance *avatarp)
 		// need this line to disambiguate between versions of LLCharacter::getVisualParam()
 		LLVisualParam*(LLAvatarAppearance::*param_function)(S32)const = &LLAvatarAppearance::getVisualParam; 
 		param->resetDrivenParams();
-		if(!param->linkDrivenParams(boost::bind(wearable_function,(LLWearable*)this, _1), false))
+		if (!param->linkDrivenParams(std::bind(wearable_function,(LLWearable*)this, std::placeholders::_1), false))
 		{
-			if( !param->linkDrivenParams(boost::bind(param_function,avatarp,_1 ), true))
+			if (!param->linkDrivenParams(std::bind(param_function,avatarp, std::placeholders::_1 ), true))
 			{
 				LL_WARNS() << "could not link driven params for wearable " << getName() << " id: " << param->getID() << LL_ENDL;
 				continue;
@@ -193,7 +193,7 @@ void LLWearable::createLayers(S32 te, LLAvatarAppearance *avatarp)
 
 	if (layer_set)
 	{
-		layer_set->cloneTemplates(mTEMap[te], (ETextureIndex)te, this);
+		   layer_set->cloneTemplates(mTEMap[te], (ETextureIndex)te, this);
 	}
 	else
 	{
@@ -201,10 +201,11 @@ void LLWearable::createLayers(S32 te, LLAvatarAppearance *avatarp)
 	}
 }
 
-LLWearable::EImportResult LLWearable::importFile(LLFILE* fp, LLAvatarAppearance* avatarp )
+LLWearable::EImportResult LLWearable::importFile(const std::string& filename,
+												 LLAvatarAppearance* avatarp )
 {
-	llifstream ifs(fp);
-	return importStream(ifs, avatarp);
+	llifstream ifs(filename.c_str(), std::ios_base::in | std::ios_base::binary);
+	return (! ifs.is_open())? FAILURE : importStream(ifs, avatarp);
 }
 
 // virtual
@@ -287,7 +288,7 @@ LLWearable::EImportResult LLWearable::importStream( std::istream& input_stream, 
 		LL_WARNS() << "Bad Wearable asset: missing valid permissions" << LL_ENDL;
 		return LLWearable::FAILURE;
 	}
-	if( !mPermissions.importStream( input_stream ) )
+	if( !mPermissions.importLegacyStream( input_stream ) )
 	{
 		return LLWearable::FAILURE;
 	}
@@ -312,7 +313,7 @@ LLWearable::EImportResult LLWearable::importStream( std::istream& input_stream, 
 	// up the vast majority of the tasks.
 	BOOL has_perm_mask = FALSE;
 	U32 perm_mask = 0;
-	if( !mSaleInfo.importStream(input_stream, has_perm_mask, perm_mask) )
+	if( !mSaleInfo.importLegacyStream(input_stream, has_perm_mask, perm_mask) )
 	{
 		return LLWearable::FAILURE;
 	}

@@ -89,6 +89,7 @@ BOOL enable_god_full(void* user_data);
 BOOL enable_god_liaison(void* user_data);
 BOOL enable_god_basic(void* user_data);
 void set_underclothes_menu_options();
+void check_merchant_status();
 
 void exchange_callingcard(const LLUUID& dest_id);
 
@@ -141,6 +142,8 @@ bool handle_go_to();
 // Export to XML or Collada
 void handle_export_selected( void * );
 
+const LLUUID get_focused_list_id_selected();
+
 class LLViewerMenuHolderGL : public LLMenuHolderGL
 {
 public:
@@ -183,8 +186,8 @@ extern LLContextMenu* gAttachScreenPieMenu;
 extern LLContextMenu* gDetachScreenPieMenu;
 extern LLContextMenu* gAttachPieMenu;
 extern LLContextMenu* gDetachPieMenu;
-extern LLContextMenu* gAttachBodyPartPieMenus[8];
-extern LLContextMenu* gDetachBodyPartPieMenus[8];
+extern LLContextMenu* gAttachPieMenu2;
+extern LLContextMenu* gDetachPieMenu2;
 
 extern LLMenuItemCallGL* gAFKMenu;
 extern LLMenuItemCallGL* gBusyMenu;
